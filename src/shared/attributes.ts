@@ -109,3 +109,6 @@ export function keywordLabel(value: string | number): string {
   }
   return text.replace(/[-_]/g, " ").replace(/^\w/, c => c.toUpperCase());
 }
+
+/** The few options ordinary users actually decide, shown up front; everything else folds under "More options". */
+export const PRIMARY_ATTRIBUTES = ["copies", "sides", "print-color-mode", "media", "print-quality", "finishings"];

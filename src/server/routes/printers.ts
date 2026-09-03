@@ -6,7 +6,7 @@ import { discoverPrinters } from "../discovery.js";
 import { HttpError, notFound } from "../errors.js";
 import { buildForm } from "../form.js";
 import { applyResolvers } from "../ipp/constraints.js";
-import { addPrinter, capsFor, deletePrinter, discoveredCaps, listPrinters, overrideCaps, refreshPrinter, requirePrinter, setOverrides, toDto } from "../printers.js";
+import { addPrinter, capsFor, deletePrinter, discoveredCaps, listPrinters, overrideCaps, refreshPrinter, requirePrinter, setDefaults, setOverrides, toDto } from "../printers.js";
 import { validateJobOptions } from "../validation.js";
 import { idParam } from "./params.js";
 
@@ -73,6 +73,14 @@ export function adminPrinterRoutes(app: FastifyInstance, db: Db, opts: { discove
   });
 
   app.post("/api/printers/:id/refresh", async req => toDto(db, await refreshPrinter(db, idParam(req.params))));
+
+  /** Per-printer defaults for the print form, stored as `<attribute>-default` overrides. */
+  app.put("/api/printers/:id/defaults", async (req) => {
+    const body = req.body;
+    if (typeof body !== "object" || body === null || Array.isArray(body))
+      throw new HttpError(400, "defaults must be an object of attribute names to values");
+    return toDto(db, setDefaults(db, idParam(req.params), body as Record<string, unknown>));
+  });
 
   app.put("/api/printers/:id/overrides", async (req) => {
     const printer = setOverrides(db, idParam(req.params), req.body);

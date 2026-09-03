@@ -41,6 +41,7 @@ export const api = {
   addPrinter: (input: { name?: string; uri: string; username?: string; password?: string }) => request<PrinterDto>("/api/printers", json("POST", input)),
   refreshPrinter: (id: number) => request<PrinterDto>(`/api/printers/${id}/refresh`, json("POST")),
   deletePrinter: (id: number) => request<void>(`/api/printers/${id}`, json("DELETE")),
+  setDefaults: (id: number, defaults: Record<string, unknown>) => request<PrinterDto>(`/api/printers/${id}/defaults`, json("PUT", defaults)),
   setOverrides: (id: number, overrides: Record<string, { type: string; values: unknown[] }>) => request<PrinterDto>(`/api/printers/${id}/overrides`, json("PUT", overrides)),
   listChanges: (id: number) => request<CapsChangeDto[]>(`/api/printers/${id}/changes`),
   ackChange: (id: number, changeId: number) => request<void>(`/api/printers/${id}/changes/${changeId}/ack`, json("POST")),

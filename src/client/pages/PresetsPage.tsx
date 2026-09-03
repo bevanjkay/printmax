@@ -4,7 +4,9 @@ import type { OptionValues } from "../components/OptionsForm.js";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
+import { IconPlus, IconPresets } from "../components/Icons.js";
 import { OptionsForm } from "../components/OptionsForm.js";
+import { Badge, Button, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useAsyncError, useDebounced } from "../util.js";
 
@@ -55,44 +57,64 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
     }
   }
 
+  const chosen = Object.keys(options).length;
+
   return (
-    <form className="card" onSubmit={submit}>
-      <h3>{preset ? `Edit “${preset.name}”` : "New preset"}</h3>
-      <div className="row">
-        <label>
-          Name
-          <input required value={name} onChange={e => setName(e.target.value)} />
-        </label>
-        <label>
-          Description
-          <input value={description} onChange={e => setDescription(e.target.value)} />
-        </label>
-      </div>
-      {user.role === "admin" && (
-        <label>
-          Visibility
-          <select value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
-            <option value="global">Shared with everyone</option>
-            <option value="user">Only me</option>
-          </select>
-        </label>
-      )}
-      <p className="muted small">Only set the options this preset should fix; everything else follows the printer's defaults.</p>
-      <OptionsForm fields={fields} value={options} onChange={setOptions} />
-      <ValidationNotice result={validation} value={options} onApply={setOptions} />
-      <div className="row">
-        <button disabled={busy || !name || (validation?.errors.length ?? 0) > 0}>{busy ? "Saving…" : "Save preset"}</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
-      </div>
-      {error && <p className="error">{error}</p>}
+    <form onSubmit={submit}>
+      <Panel
+        title={preset ? `Edit ${preset.name}` : "New preset"}
+        footer={(
+          <>
+            <span className="status">
+              {chosen === 0 ? "Choose the settings this preset should fix." : `${chosen} setting${chosen === 1 ? "" : "s"} fixed; everything else follows the printer's defaults.`}
+            </span>
+            <Button onClick={onCancel}>Cancel</Button>
+            <Button type="submit" variant="primary" loading={busy} disabled={!name || (validation?.errors.length ?? 0) > 0}>Save preset</Button>
+          </>
+        )}
+      >
+        <div className="panel-body">
+          <div className="two-col">
+            <Field label="Name">
+              <input className="control" required autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Double-sided draft" />
+            </Field>
+            <Field label="Description" hint="Optional. Shown next to the name.">
+              <input className="control" value={description} onChange={e => setDescription(e.target.value)} />
+            </Field>
+          </div>
+          {user.role === "admin" && (
+            <Field label="Who can use it">
+              <select className="control" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
+                <option value="global">Everyone</option>
+                <option value="user">Only me</option>
+              </select>
+            </Field>
+          )}
+        </div>
+        <div className="panel-body">
+          <OptionsForm fields={fields} value={options} onChange={setOptions} />
+          <ValidationNotice result={validation} value={options} onApply={setOptions} />
+          {error && <Notice tone="error">{error}</Notice>}
+        </div>
+      </Panel>
     </form>
   );
+}
+
+function optionLabel(fields: FormField[], key: string): string {
+  return fields.find(f => f.name === key)?.label ?? key;
+}
+
+function optionValueLabel(fields: FormField[], key: string, value: unknown): string {
+  const field = fields.find(f => f.name === key);
+  const values = Array.isArray(value) ? value : [value];
+  return values.map(v => field?.choices?.find(c => String(c.value) === String(v))?.label ?? String(v)).join(", ");
 }
 
 export function PresetsPage({ user, printers }: Props) {
   const [printerId, setPrinterId] = useState<number | null>(null);
   const printer = printers.find(p => p.id === printerId) ?? printers[0];
-  const [presets, setPresets] = useState<PresetDto[]>([]);
+  const [presets, setPresets] = useState<PresetDto[] | null>(null);
   const [fields, setFields] = useState<FormField[]>([]);
   const [editing, setEditing] = useState<PresetDto | null | "new">(null);
   const { error, fail, clear } = useAsyncError();
@@ -126,27 +148,33 @@ export function PresetsPage({ user, printers }: Props) {
     }
   }
 
-  if (!printer)
-    return <p className="muted">Add a printer first.</p>;
+  if (!printer) {
+    return (
+      <Panel>
+        <EmptyState icon={<IconPresets />} title="No printers yet" description="Presets belong to a printer. Add a printer first, then save settings for it here." />
+      </Panel>
+    );
+  }
 
   return (
-    <>
-      <div className="row">
-        <label>
-          Printer
-          <select
-            value={printer.id}
-            onChange={(e) => {
-              setPrinterId(Number(e.target.value));
-              setEditing(null);
-            }}
-          >
-            {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-        <button onClick={() => setEditing("new")} disabled={editing === "new"}>New preset</button>
+    <div className="stack">
+      <div className="toolbar">
+        <select
+          className="control"
+          style={{ width: "auto", minWidth: 220 }}
+          aria-label="Printer"
+          value={printer.id}
+          onChange={(e) => {
+            setPrinterId(Number(e.target.value));
+            setEditing(null);
+          }}
+        >
+          {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div className="spacer" />
+        <Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")} disabled={editing === "new"}>New preset</Button>
       </div>
-      {error && <p className="error">{error}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
 
       {editing !== null && (
         <PresetEditor
@@ -163,39 +191,68 @@ export function PresetsPage({ user, printers }: Props) {
         />
       )}
 
-      {presets.length === 0
-        ? <p className="muted">No presets for this printer yet.</p>
-        : presets.map(p => (
-            <div key={p.id} className="card">
-              <h3>
-                {p.name}
-                {" "}
-                <span className="state">{p.scope === "global" ? "shared" : "mine"}</span>
-              </h3>
-              {p.description && <p className="muted">{p.description}</p>}
-              <dl>
-                {Object.entries(p.options).map(([k, v]) => (
-                  <div key={k} className="pair">
-                    <dt>{fields.find(f => f.name === k)?.label ?? k}</dt>
-                    <dd>{Array.isArray(v) ? v.join(", ") : String(v)}</dd>
-                  </div>
-                ))}
-              </dl>
-              {p.problems.length > 0 && (
-                <p className="error small">
-                  Needs attention:
-                  {" "}
-                  {p.problems.join("; ")}
-                </p>
+      <div className="table-wrap">
+        {presets === null
+          ? <SkeletonRows />
+          : presets.length === 0
+            ? (
+                <EmptyState
+                  icon={<IconPresets />}
+                  title={`No presets for ${printer.name}`}
+                  description="A preset fixes a few settings, like double-sided and draft quality, so people pick a name instead of options."
+                  action={<Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")}>Create the first preset</Button>}
+                />
+              )
+            : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Preset</th>
+                      <th>Visibility</th>
+                      <th>Settings</th>
+                      <th>Status</th>
+                      <th className="actions"><span className="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {presets.map(p => (
+                      <tr key={p.id}>
+                        <td>
+                          <div className="primary">{p.name}</div>
+                          {p.description && <div className="meta">{p.description}</div>}
+                        </td>
+                        <td><Badge plain>{p.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
+                        <td>
+                          <div className="chips">
+                            {Object.entries(p.options).map(([k, v]) => (
+                              <span key={k} className="chip">
+                                {optionLabel(fields, k)}
+                                <b>{optionValueLabel(fields, k, v)}</b>
+                              </span>
+                            ))}
+                            {Object.keys(p.options).length === 0 && <span className="meta">Printer defaults</span>}
+                          </div>
+                        </td>
+                        <td>
+                          {p.problems.length > 0
+                            ? <Badge tone="danger">Needs attention</Badge>
+                            : <Badge tone="success">Ready</Badge>}
+                          {p.problems.length > 0 && <div className="meta danger-text">{p.problems.join("; ")}</div>}
+                        </td>
+                        <td className="actions">
+                          {p.editable && (
+                            <>
+                              <Button size="sm" onClick={() => setEditing(p)}>Edit</Button>
+                              <ConfirmButton size="sm" label="Delete" confirmLabel="Delete preset?" onConfirm={() => void remove(p)} />
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
-              {p.editable && (
-                <div className="row">
-                  <button className="small" onClick={() => setEditing(p)}>Edit</button>
-                  <ConfirmButton className="danger small" label="Delete" onConfirm={() => void remove(p)} />
-                </div>
-              )}
-            </div>
-          ))}
-    </>
+      </div>
+    </div>
   );
 }

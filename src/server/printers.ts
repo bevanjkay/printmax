@@ -9,7 +9,7 @@ import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError, toHttpUrl } from "./ipp/client.js";
 import { attrValue, attrValues } from "./ipp/codec.js";
 import { getPrinterAttributes } from "./ipp/operations.js";
-import { mergeCaps } from "./ipp/options.js";
+import { buildJobAttributes, mergeCaps, validateOptions } from "./ipp/options.js";
 
 export interface PrinterRow {
   id: number;
@@ -161,6 +161,38 @@ function assertAttributes(value: unknown): asserts value is IppAttributes {
 export function setOverrides(db: Db, id: number, overrides: unknown): PrinterRow {
   requirePrinter(db, id);
   assertAttributes(overrides);
+  db.prepare("UPDATE printers SET caps_overrides = ? WHERE id = ?").run(JSON.stringify(overrides), id);
+  return requirePrinter(db, id);
+}
+
+/**
+ * Sets this printer's form defaults (e.g. media = A4) as `<attribute>-default` overrides.
+ * Values must be ones the printer supports; an empty value removes the override so the
+ * printer's own default applies again.
+ */
+export function setDefaults(db: Db, id: number, defaults: Record<string, unknown>): PrinterRow {
+  const printer = requirePrinter(db, id);
+  const caps = capsFor(printer);
+  const overrides = overrideCaps(printer);
+  const problems: string[] = [];
+  for (const [name, value] of Object.entries(defaults)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(name) || name.endsWith("-default"))
+      throw new HttpError(400, `"${name}" is not an attribute name`);
+    if (value === null || value === undefined || value === "") {
+      delete overrides[`${name}-default`];
+      continue;
+    }
+    const errors = validateOptions({ [name]: value }, caps);
+    if (errors.length > 0) {
+      problems.push(...errors);
+      continue;
+    }
+    const attr = buildJobAttributes({ [name]: value }, caps)[name];
+    if (attr)
+      overrides[`${name}-default`] = attr;
+  }
+  if (problems.length > 0)
+    throw new HttpError(422, problems.join("; "));
   db.prepare("UPDATE printers SET caps_overrides = ? WHERE id = ?").run(JSON.stringify(overrides), id);
   return requirePrinter(db, id);
 }

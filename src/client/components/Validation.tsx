@@ -1,5 +1,6 @@
 import type { ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "./OptionsForm.js";
+import { Button, Notice } from "./ui.js";
 
 interface Props {
   result: ValidationResult | null;
@@ -7,17 +8,18 @@ interface Props {
   onApply: (resolved: OptionValues) => void;
 }
 
-/** Shows validation problems and, when the printer published a resolver, a one-click fix. */
+/** Validation problems from the printer's capabilities, with the printer's own resolver as a one-click fix. */
 export function ValidationNotice({ result, value, onApply }: Props) {
   if (!result || result.errors.length === 0)
     return null;
   const canFix = JSON.stringify(result.resolved) !== JSON.stringify(value);
   return (
-    <div className="notice error">
+    <Notice tone="error">
+      <strong>The printer can't do this combination.</strong>
       <ul>
         {result.errors.map(e => <li key={e}>{e}</li>)}
       </ul>
-      {canFix && <button type="button" className="small" onClick={() => onApply(result.resolved)}>Apply suggested fix</button>}
-    </div>
+      {canFix && <Button size="sm" onClick={() => onApply(result.resolved)}>Apply the printer's suggested fix</Button>}
+    </Notice>
   );
 }

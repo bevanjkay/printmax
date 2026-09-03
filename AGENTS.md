@@ -8,3 +8,4 @@
 - Fixtures in `fixtures/` are verbatim Get-Printer-Attributes dumps from `pnpm dump-caps <uri>`; never hand-edit them.
 - Validation: `pnpm lint`, `pnpm check`, `pnpm test`, `pnpm build` (see `.github/workflows/checks.yml`).
 - pnpm 11's default `trustPolicy: no-downgrade` rejects `semver@6.3.1` (pinned by `@babel/core`); the exclusion lives in `pnpm-workspace.yaml`. Copy that file into any Docker stage that runs `pnpm install`, or the install fails there too.
+- UI: `PRODUCT.md` is product truth and `DESIGN.md` the visual system (category-standard product UI at Linear's level). Tokens and every component style live in `src/client/styles.css`; shared components in `src/client/components/ui.tsx`; icons are authored 16px SVG in `Icons.tsx`. No web fonts or CDNs: assets must work on an isolated LAN.

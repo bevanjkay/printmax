@@ -3,6 +3,7 @@ import type { UserDto } from "../../shared/types.js";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
+import { Badge, Button, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { formatDate, useAsyncError } from "../util.js";
 
 function ResetPassword({ user, onDone }: { user: UserDto; onDone: () => void }) {
@@ -22,17 +23,17 @@ function ResetPassword({ user, onDone }: { user: UserDto; onDone: () => void }) 
   }
 
   return (
-    <form className="row" onSubmit={submit}>
-      <input type="password" autoComplete="new-password" placeholder={`New password for ${user.name}`} minLength={8} required value={value} onChange={e => setValue(e.target.value)} />
-      <button className="small">Set</button>
-      <button type="button" className="small" onClick={onDone}>Cancel</button>
-      {error && <span className="error small">{error}</span>}
+    <form className="inline-form" onSubmit={submit}>
+      <input className="control" type="password" autoComplete="new-password" placeholder="New password" aria-label={`New password for ${user.name}`} minLength={8} required autoFocus value={value} onChange={e => setValue(e.target.value)} />
+      <Button type="submit" size="sm" variant="primary">Set</Button>
+      <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+      {error && <span className="danger-text xs">{error}</span>}
     </form>
   );
 }
 
 export function UsersPage({ me }: { me: UserDto }) {
-  const [users, setUsers] = useState<UserDto[]>([]);
+  const [users, setUsers] = useState<UserDto[] | null>(null);
   const [resetting, setResetting] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -86,65 +87,72 @@ export function UsersPage({ me }: { me: UserDto }) {
   }
 
   return (
-    <section className="grid">
-      <div>
-        {error && <p className="error">{error}</p>}
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Created</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td>{u.name}</td>
-                <td>{u.email}</td>
-                <td>{u.role}</td>
-                <td className="small">{formatDate(u.createdAt)}</td>
-                <td>
-                  {resetting === u.id
-                    ? <ResetPassword user={u} onDone={() => setResetting(null)} />
-                    : (
-                        <div className="row">
-                          <button className="small" onClick={() => setResetting(u.id)}>Reset password</button>
-                          {u.id !== me.id && <ConfirmButton className="small danger" label="Delete" confirmLabel="Delete user?" onConfirm={() => void remove(u)} />}
-                        </div>
-                      )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="muted small">Deleting a user removes their personal presets; their job history stays.</p>
+    <div className="split narrow-aside">
+      <div className="stack">
+        {error && <Notice tone="error">{error}</Notice>}
+        <div className="table-wrap">
+          {users === null
+            ? <SkeletonRows />
+            : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Added</th>
+                      <th className="actions"><span className="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id}>
+                        <td className="primary">
+                          {u.name}
+                          {u.id === me.id && <span className="meta"> (you)</span>}
+                        </td>
+                        <td className="meta email" title={u.email}>{u.email}</td>
+                        <td>{u.role === "admin" ? <Badge tone="info" plain>Admin</Badge> : <Badge plain>User</Badge>}</td>
+                        <td className="meta num">{formatDate(u.createdAt)}</td>
+                        <td className="actions">
+                          {resetting === u.id
+                            ? <ResetPassword user={u} onDone={() => setResetting(null)} />
+                            : (
+                                <>
+                                  <Button size="sm" onClick={() => setResetting(u.id)}>Reset password</Button>
+                                  {u.id !== me.id && <ConfirmButton size="sm" label="Delete" confirmLabel="Delete user?" onConfirm={() => void remove(u)} />}
+                                </>
+                              )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+        </div>
+        <p className="help">Deleting a user removes their personal presets. Their job history stays.</p>
       </div>
-      <form className="card" onSubmit={create}>
-        <h3>Add user</h3>
-        <label>
-          Name
-          <input required value={name} onChange={e => setName(e.target.value)} />
-        </label>
-        <label>
-          Email
-          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} />
-        </label>
-        <label>
-          Password
-          <input type="password" required minLength={8} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
-        </label>
-        <label>
-          Role
-          <select value={role} onChange={e => setRole(e.target.value as "admin" | "user")}>
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-        <button disabled={busy}>{busy ? "Creating…" : "Create"}</button>
+      <form onSubmit={create}>
+        <Panel title="Add a user" footer={<Button type="submit" variant="primary" loading={busy}>Create user</Button>}>
+          <div className="panel-body">
+            <Field label="Name">
+              <input className="control" required value={name} onChange={e => setName(e.target.value)} />
+            </Field>
+            <Field label="Email">
+              <input className="control" type="email" required value={email} onChange={e => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Password" hint="At least 8 characters. They can change it under Account.">
+              <input className="control" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} />
+            </Field>
+            <Field label="Role" hint="Admins manage printers, shared presets and users.">
+              <select className="control" value={role} onChange={e => setRole(e.target.value as "admin" | "user")}>
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </Field>
+          </div>
+        </Panel>
       </form>
-    </section>
+    </div>
   );
 }

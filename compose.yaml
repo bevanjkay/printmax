@@ -10,6 +10,7 @@ services:
       POLL_INTERVAL_MS: "3000"
       CAPS_REFRESH_HOURS: "24"
       MAX_UPLOAD_MB: "200"
+      DEFAULT_MEDIA: iso_a4_210x297mm
     volumes:
       - data:/data
       - uploads:/data/uploads

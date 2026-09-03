@@ -174,6 +174,25 @@ describe("aPI", () => {
       expect(ok.json().errors).toEqual([]);
     });
 
+    it("lets admins set per-printer form defaults within what the printer supports", async () => {
+      const set = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { media: "iso_a4_210x297mm", sides: "two-sided-long-edge" } }));
+      expect(set.statusCode, set.body).toBe(200);
+      expect(set.json().summary.defaults.media).toBe("iso_a4_210x297mm");
+      const fields = (await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>();
+      expect(fields.find(f => f.name === "media")?.default).toBe("iso_a4_210x297mm");
+      expect(fields.find(f => f.name === "sides")?.default).toBe("two-sided-long-edge");
+
+      const bad = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { media: "iso_a3_297x420mm" } }));
+      expect(bad.statusCode).toBe(422);
+      expect(bad.json().error).toMatch(/"media" = iso_a3_297x420mm is not supported/);
+
+      const cleared = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { media: "", sides: null } }));
+      expect(cleared.statusCode).toBe(200);
+      const after = (await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>();
+      expect(after.find(f => f.name === "media")?.default).toBe("na_letter_8.5x11in");
+      expect((await app.inject(as(userCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: {} }))).statusCode).toBe(403);
+    });
+
     it("rejects malformed overrides and keeps users out", async () => {
       expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/overrides`, payload: { "sides-supported": ["one-sided"] } }))).statusCode).toBe(400);
       expect((await app.inject(as(userCookie, { method: "PUT", url: `/api/printers/${printerId}/overrides`, payload: {} }))).statusCode).toBe(403);
