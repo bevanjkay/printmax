@@ -38,3 +38,23 @@ th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var
 .state-completed, .state-idle { color: var(--ok); }
 .state-failed, .state-aborted, .state-stopped, .state-canceled { color: var(--danger); }
 .state-retrying, .state-processing-stopped, .state-pending-held { color: var(--warn); }
+main.narrow, .card.narrow { max-width: 420px; }
+.row.between { justify-content: space-between; align-items: center; }
+nav { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.tab { background: none; border-color: transparent; }
+.tab.active { border-color: var(--border); font-weight: 600; }
+.badge { display: inline-block; margin-left: 0.35rem; padding: 0 0.4rem; border-radius: 999px; font-size: 0.75rem; background: var(--warn); color: white; }
+.notice { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0.5rem 0; font-size: 0.9rem; }
+.notice.error { border-color: var(--danger); }
+.notice.warn { border-color: var(--warn); }
+.notice ul { margin: 0 0 0.5rem; padding-left: 1.2rem; }
+.ok { color: var(--ok); }
+label.inline { display: flex; align-items: center; gap: 0.4rem; }
+fieldset.multiselect { border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; margin: 0 0 0.75rem; font-size: 0.9rem; }
+fieldset.multiselect legend { padding: 0 0.25rem; }
+fieldset.multiselect input { display: inline; width: auto; margin: 0; }
+details summary { cursor: pointer; margin-bottom: 0.5rem; }
+small.muted { display: block; margin-top: 0.15rem; }
+dl .pair { display: contents; }
+button.armed { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+label.inline input { width: auto; margin: 0; }

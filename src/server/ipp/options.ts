@@ -7,8 +7,8 @@
  * `<attr>-supported` attribute, and finally the JavaScript type of the value.
  */
 import type { IppAttribute, IppAttributes, IppCollection, IppValue, IppValueType } from "./codec.js";
+import { enumName, enumValue } from "../../shared/enums.js";
 import { attrValues, isOutOfBand } from "./codec.js";
-import { enumName, enumValue } from "./enums.js";
 
 export type OptionMap = Record<string, unknown>;
 
@@ -185,7 +185,12 @@ export function validateOptions(options: OptionMap, caps: IppAttributes): string
       continue;
 
     for (const value of attr.values) {
-      if (supported.type === "rangeOfInteger") {
+      if (name === "job-priority") {
+        // RFC 8011 5.2.1: job-priority-supported is the number of priority levels, not a list of values.
+        if (typeof value === "number" && (value < 1 || value > 100))
+          errors.push("\"job-priority\" must be between 1 and 100");
+      }
+      else if (supported.type === "rangeOfInteger") {
         const range = supported.values[0] as { min: number; max: number } | undefined;
         if (range && typeof value === "number" && (value < range.min || value > range.max))
           errors.push(`"${name}" must be between ${range.min} and ${range.max}`);

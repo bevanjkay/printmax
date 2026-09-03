@@ -63,6 +63,24 @@ const MIGRATIONS: string[] = [
   CREATE INDEX jobs_state ON jobs(state);
   CREATE INDEX jobs_printer ON jobs(printer_id);
   `,
+  `
+  CREATE TABLE sessions (
+    id INTEGER PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+  CREATE TABLE caps_changes (
+    id INTEGER PRIMARY KEY,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    fetched_at TEXT NOT NULL,
+    diff TEXT NOT NULL,
+    acknowledged_at TEXT
+  );
+  CREATE INDEX caps_changes_printer ON caps_changes(printer_id, acknowledged_at);
+  CREATE INDEX jobs_user ON jobs(user_id);
+  `,
 ];
 
 export function openDb(file: string): Db {

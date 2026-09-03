@@ -2,11 +2,12 @@ import type { PrinterDto, PrinterSummary } from "../shared/types.js";
 import type { Db } from "./db.js";
 import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
+import { enumName } from "../shared/enums.js";
+import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError, toHttpUrl } from "./ipp/client.js";
 import { attrValue, attrValues } from "./ipp/codec.js";
-import { enumName } from "./ipp/enums.js";
 import { getPrinterAttributes } from "./ipp/operations.js";
 import { mergeCaps } from "./ipp/options.js";
 
@@ -29,8 +30,17 @@ export function targetFor(printer: PrinterRow): PrinterTarget {
   return { uri: printer.uri, username: printer.username, password: printer.password };
 }
 
+export function discoveredCaps(printer: PrinterRow): IppAttributes {
+  return JSON.parse(printer.caps_discovered) as IppAttributes;
+}
+
+export function overrideCaps(printer: PrinterRow): IppAttributes {
+  return JSON.parse(printer.caps_overrides) as IppAttributes;
+}
+
+/** Effective capabilities: what the printer reported, with admin overrides on top. */
 export function capsFor(printer: PrinterRow): IppAttributes {
-  return mergeCaps(JSON.parse(printer.caps_discovered) as IppAttributes, JSON.parse(printer.caps_overrides) as IppAttributes);
+  return mergeCaps(discoveredCaps(printer), overrideCaps(printer));
 }
 
 export function listPrinters(db: Db): PrinterRow[] {
@@ -101,9 +111,11 @@ export async function addPrinter(db: Db, input: AddPrinterInput): Promise<Printe
   return requirePrinter(db, Number(result.lastInsertRowid));
 }
 
+/** Re-fetches capabilities and records what changed so presets are not silently broken. */
 export async function refreshPrinter(db: Db, id: number): Promise<PrinterRow> {
   const printer = requirePrinter(db, id);
   const caps = await fetchCaps(targetFor(printer));
+  const diff = diffCaps(discoveredCaps(printer), caps);
   db.prepare(`
     UPDATE printers SET caps_discovered = ?, caps_fetched_at = ?, uuid = COALESCE(?, uuid), make_model = COALESCE(?, make_model), location = COALESCE(?, location)
     WHERE id = ?
@@ -115,6 +127,41 @@ export async function refreshPrinter(db: Db, id: number): Promise<PrinterRow> {
     attrValue<string>(caps, "printer-location") ?? null,
     id,
   );
+  if (!isEmptyDiff(diff))
+    recordCapsChange(db, id, diff);
+  return requirePrinter(db, id);
+}
+
+/** Refreshes every printer whose capabilities are older than `maxAgeHours`. Failures are returned, not thrown. */
+export async function refreshStalePrinters(db: Db, maxAgeHours: number): Promise<Array<{ id: number; error: string }>> {
+  const cutoff = new Date(Date.now() - maxAgeHours * 3_600_000).toISOString();
+  const stale = db.prepare("SELECT id FROM printers WHERE caps_fetched_at IS NULL OR caps_fetched_at < ?").all(cutoff) as unknown as Array<{ id: number }>;
+  const failures: Array<{ id: number; error: string }> = [];
+  for (const { id } of stale) {
+    try {
+      await refreshPrinter(db, id);
+    }
+    catch (err) {
+      failures.push({ id, error: (err as Error).message });
+    }
+  }
+  return failures;
+}
+
+function assertAttributes(value: unknown): asserts value is IppAttributes {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new HttpError(400, "overrides must be an object of IPP attributes");
+  for (const [name, attr] of Object.entries(value as Record<string, unknown>)) {
+    const a = attr as { type?: unknown; values?: unknown };
+    if (typeof a !== "object" || a === null || typeof a.type !== "string" || !Array.isArray(a.values))
+      throw new HttpError(400, `override "${name}" must look like { "type": "keyword", "values": [...] }`);
+  }
+}
+
+export function setOverrides(db: Db, id: number, overrides: unknown): PrinterRow {
+  requirePrinter(db, id);
+  assertAttributes(overrides);
+  db.prepare("UPDATE printers SET caps_overrides = ? WHERE id = ?").run(JSON.stringify(overrides), id);
   return requirePrinter(db, id);
 }
 
@@ -151,11 +198,13 @@ export function summarise(caps: IppAttributes): PrinterSummary {
     copiesMax: (attrValue<{ min: number; max: number }>(caps, "copies-supported"))?.max ?? 1,
     jobCreationAttributes: attrValues<string>(caps, "job-creation-attributes-supported"),
     jobAccountIdSupported: attrValue<boolean>(caps, "job-account-id-supported") ?? false,
+    hasConstraints: attrValues(caps, "job-constraints-supported").length > 0,
     defaults,
   };
 }
 
-export function toDto(printer: PrinterRow): PrinterDto {
+export function toDto(db: Db, printer: PrinterRow): PrinterDto {
+  const pending = db.prepare("SELECT COUNT(*) AS n FROM caps_changes WHERE printer_id = ? AND acknowledged_at IS NULL").get(printer.id) as { n: number };
   return {
     id: printer.id,
     name: printer.name,
@@ -166,6 +215,8 @@ export function toDto(printer: PrinterRow): PrinterDto {
     location: printer.location,
     capsFetchedAt: printer.caps_fetched_at,
     createdAt: printer.created_at,
+    overrideCount: Object.keys(overrideCaps(printer)).length,
+    pendingChanges: pending.n,
     summary: summarise(capsFor(printer)),
   };
 }

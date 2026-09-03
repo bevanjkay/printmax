@@ -1,12 +1,21 @@
 # printmax
 
 Self-hosted web app for a homelab or small office: upload a PDF, PNG or JPEG, pick a printer and
-options, print. Talks IPP directly to the printer, so there is no CUPS to run or babysit.
+a preset, print. Talks IPP directly to the printer, so there is no CUPS to run or babysit.
 
-Status: **milestone M1 (walking skeleton)**. Add a printer by URI, discover its capabilities, upload
-a document, submit it with options validated against those capabilities, and follow the job to
-completion. No users, presets or discovery yet. See `print-server-plan.md` for the design and
-the roadmap.
+- **Capability-driven.** The printer's own `Get-Printer-Attributes` response generates the option
+  editor, validates every job, and is diffed on each re-fetch so changes are flagged instead of
+  silently breaking presets. The only hand-maintained table is labels and widget types.
+- **Shared presets.** Admins publish named presets for everyone; users keep personal ones.
+  Constraint and resolver data (PWG 5100.13) is honoured when the printer publishes it, with a
+  one-click "apply suggested fix".
+- **Multi-user.** Local accounts, admin and user roles, per-user job history.
+- **No spooler.** Jobs retry with backoff when the printer is unreachable; rejections surface the
+  printer's own IPP status and message.
+
+Status: milestones M1 to M3 of `print-server-plan.md` are built. **M0 (the spike against the
+Reside Toshiba) is still open** because that printer is only reachable on-site; development so far
+targets `ippeveprinter`.
 
 ## Run
 
@@ -14,10 +23,8 @@ the roadmap.
 docker compose up -d
 ```
 
-Then open <http://localhost:8080>, add a printer with its IPP URI (usually
-`ipp://<host>/ipp/print`; run `ippfind` on a machine on the printer's network if unsure) and print.
-
-Environment:
+Open <http://localhost:8080>. The first visit asks you to create the admin account. Then, under
+Printers, add a printer by IPP URI (usually `ipp://<host>/ipp/print`) or scan for one.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -25,22 +32,41 @@ Environment:
 | `DATA_DIR` | `/data` in the container | SQLite database and uploads |
 | `RETENTION_DAYS` | `7` | Delete uploaded files this long after the job finishes |
 | `POLL_INTERVAL_MS` | `3000` | How often job state is polled and retries are attempted |
+| `CAPS_REFRESH_HOURS` | `24` | Re-fetch printer capabilities older than this; `0` disables |
+| `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
-
-Job submission retries with exponential backoff (5 attempts) when the printer cannot be reached.
-Rejections from the printer fail the job immediately with the IPP status and message.
 
 The container runs as the unprivileged `node` user (uid 1000). The named volumes in `compose.yaml`
 inherit the right ownership; if you bind-mount a host directory instead, `chown 1000:1000` it first.
 
-Printer credentials (for devices that require HTTP basic auth on IPP) are stored unencrypted in
-the SQLite database. Treat the data volume accordingly.
+### Network discovery
+
+"Scan" browses DNS-SD (`_ipp._tcp` / `_ipps._tcp`). Multicast does not cross the Docker bridge,
+so inside Docker it only works with `network_mode: host` (see the commented block in
+`compose.yaml`). Manual URI entry is the reliable path; `ippfind` on any machine on the printer's
+network prints the URI.
+
+### Reverse proxy
+
+The app trusts `X-Forwarded-*` headers and marks the session cookie `Secure` when the request
+arrived over HTTPS, so put it behind Caddy, Traefik, nginx or a Cloudflare Tunnel as usual. Two
+things to check on the proxy: allow request bodies up to `MAX_UPLOAD_MB` (nginx:
+`client_max_body_size`), and forward `X-Forwarded-Proto`. Nothing in the app needs a path prefix
+or WebSockets.
+
+### Security notes
+
+- Sessions are random tokens stored server-side; nothing to configure and no signing secret.
+- Passwords are hashed with scrypt.
+- Printer credentials (for devices that require HTTP basic auth on IPP) are stored unencrypted in
+  the SQLite database. Treat the data volume accordingly.
+- IPPS connections accept self-signed printer certificates.
 
 ## Develop
 
 ```sh
 pnpm install
-pnpm test          # unit tests plus an end-to-end run against ippeveprinter if installed
+pnpm test          # unit and API tests, plus an end-to-end run against ippeveprinter if installed
 pnpm dev           # API on :8080 (serves dist/client if built)
 pnpm dev:client    # Vite dev server with /api proxied to :8080
 ```
@@ -48,13 +74,16 @@ pnpm dev:client    # Vite dev server with /api proxied to :8080
 Capture a printer's attributes as a fixture:
 
 ```sh
-pnpm dump-caps ipp://printer/ipp/print > fixtures/my-printer.json
+pnpm dump-caps ipp://printer/ipp/print [username password] > fixtures/my-printer.json
 ```
 
 ## Layout
 
-- `src/server/ipp/` — RFC 8010 codec, HTTP transport, operations, option typing and validation
-- `src/server/` — SQLite (`node:sqlite`), printers, jobs, worker, Fastify app
+- `src/server/ipp/` — RFC 8010 codec, HTTP transport, operations, option typing and validation,
+  constraint/resolver evaluation
+- `src/server/` — SQLite (`node:sqlite`), auth and sessions, printers, presets, jobs, worker,
+  capability diffing, DNS-SD discovery, Fastify app
+- `src/shared/` — DTOs, IPP enum tables, and the attribute label/widget table
 - `src/client/` — React front end, served static by the server in production
 - `fixtures/` — verbatim Get-Printer-Attributes dumps used as test data
 
@@ -66,3 +95,4 @@ pnpm dump-caps ipp://printer/ipp/print > fixtures/my-printer.json
   flag): same synchronous API, no native build in the Docker image.
 - Printers carry optional `username`/`password` columns; the target device advertises "IPP 2.0
   with authentication".
+- A `sessions` table and a `caps_changes` table were added for login and re-fetch diffing.

@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import process from "node:process";
 import { buildApp } from "./app.js";
+import { purgeExpiredSessions } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { startJobWorker, sweepExpiredFiles } from "./jobs.js";
@@ -14,17 +15,21 @@ async function main(): Promise<void> {
     db,
     uploadDir: config.uploadDir,
     maxUploadBytes: config.maxUploadBytes,
+    discoveryTimeoutMs: config.discoveryTimeoutMs,
     staticDir: config.staticDir,
     logger: true,
   });
 
   const worker = startJobWorker(db, {
     intervalMs: config.pollIntervalMs,
+    capsRefreshHours: config.capsRefreshHours,
     onError: err => app.log.error(err, "job worker error"),
+    onInfo: (message, data) => app.log.warn(data ?? {}, message),
   });
 
   async function sweep(): Promise<void> {
     try {
+      purgeExpiredSessions(db);
       const removed = await sweepExpiredFiles(db, config.retentionDays);
       if (removed > 0)
         app.log.info({ removed }, "removed expired uploads");

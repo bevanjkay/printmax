@@ -56,6 +56,11 @@ describe("validateOptions", () => {
     expect(errors[2]).toMatch(/"print-color-mode" = color is not supported/);
   });
 
+  it("does not treat job-priority-supported as a value list", () => {
+    expect(validateOptions({ "job-priority": 50 }, caps)).toEqual([]);
+    expect(validateOptions({ "job-priority": 500 }, caps)).toEqual(["\"job-priority\" must be between 1 and 100"]);
+  });
+
   it("rejects attributes the printer does not list in job-creation-attributes-supported", () => {
     expect(validateOptions({ "job-account-id": "dept-42" }, caps)).toEqual([
       "\"job-account-id\" is not a job attribute this printer accepts",

@@ -1,6 +1,6 @@
 # Print server manager — implementation plan
 
-**Status:** M1 walking skeleton built 3 Sep 2026 (see README). **M0 is still open:** the Toshiba is
+**Status:** M1, M2 and M3 built 3 Sep 2026 (see README for what shipped). **M0 is still open:** the Toshiba is
 only reachable from Reside's LAN, so the `ipptool` spike and the department-code question are
 unresolved. Development so far targets `ippeveprinter`; `fixtures/ippeveprinter.json` stands in for the
 Toshiba dump until M0 is run on-site.

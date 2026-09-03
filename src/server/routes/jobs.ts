@@ -3,20 +3,13 @@ import type { Db } from "../db.js";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { open, unlink } from "node:fs/promises";
+import { open, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { HttpError } from "../errors.js";
+import { HttpError, notFound } from "../errors.js";
 import { sniffFormat, SUPPORTED_FORMATS } from "../format.js";
-import { cancelJob, createJob, listJobs, requireJob, toDto } from "../jobs.js";
-import { getPrinter } from "../printers.js";
-
-function idParam(params: unknown): number {
-  const id = Number((params as { id: string }).id);
-  if (!Number.isInteger(id) || id <= 0)
-    throw new HttpError(400, "invalid id");
-  return id;
-}
+import { cancelJob, canSeeJob, createJob, listJobs, requireJob, toDto } from "../jobs.js";
+import { idParam } from "./params.js";
 
 async function readHead(file: string, bytes = 16): Promise<Buffer> {
   const handle = await open(file, "r");
@@ -41,13 +34,18 @@ async function removeQuietly(file: string): Promise<void> {
 
 export function jobRoutes(app: FastifyInstance, db: Db, uploadDir: string): void {
   app.get("/api/jobs", async (req) => {
-    const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 100) || 100, 500);
-    return listJobs(db, limit).map(job => toDto(job, getPrinter(db, job.printer_id)?.name));
+    const query = req.query as { limit?: string; all?: string };
+    const limit = Math.min(Number(query.limit ?? 100) || 100, 500);
+    const user = req.user!;
+    const everyone = user.role === "admin" && query.all === "true";
+    return listJobs(db, { limit, ...(everyone ? {} : { userId: user.id }) }).map(job => toDto(db, job));
   });
 
   app.get("/api/jobs/:id", async (req) => {
     const job = requireJob(db, idParam(req.params));
-    return toDto(job, getPrinter(db, job.printer_id)?.name);
+    if (!canSeeJob(job, req.user!))
+      throw notFound("job");
+    return toDto(db, job);
   });
 
   app.post("/api/jobs", async (req, reply) => {
@@ -78,44 +76,48 @@ export function jobRoutes(app: FastifyInstance, db: Db, uploadDir: string): void
 
     if (!saved)
       throw new HttpError(400, "no file uploaded");
-    if (saved.truncated) {
-      await removeQuietly(saved.tempPath);
-      throw new HttpError(413, "file exceeds the upload size limit");
-    }
+    const discard = async (status: number, message: string): Promise<never> => {
+      await removeQuietly(saved!.tempPath);
+      throw new HttpError(status, message);
+    };
+    if (saved.truncated)
+      await discard(413, "file exceeds the upload size limit");
 
     const printerId = Number(fields.printerId);
+    if (!Number.isInteger(printerId) || printerId <= 0)
+      await discard(400, "printerId is required");
+    const presetId = fields.presetId ? Number(fields.presetId) : null;
+    if (presetId !== null && !Number.isInteger(presetId))
+      await discard(400, "invalid presetId");
+
     let options: Record<string, unknown> = {};
     try {
       options = fields.options ? JSON.parse(fields.options) as Record<string, unknown> : {};
+      if (typeof options !== "object" || options === null || Array.isArray(options))
+        throw new TypeError("not an object");
     }
     catch {
-      await removeQuietly(saved.tempPath);
-      throw new HttpError(400, "options must be a JSON object");
-    }
-    if (!Number.isInteger(printerId) || printerId <= 0) {
-      await removeQuietly(saved.tempPath);
-      throw new HttpError(400, "printerId is required");
+      await discard(400, "options must be a JSON object");
     }
 
     const sniffed = sniffFormat(await readHead(saved.tempPath));
-    if (!sniffed) {
-      await removeQuietly(saved.tempPath);
-      throw new HttpError(415, `unrecognised file type; upload one of ${SUPPORTED_FORMATS.join(", ")}`);
-    }
-    const finalPath = saved.tempPath.replace(/\.upload$/, sniffed.extension);
-    const { rename } = await import("node:fs/promises");
+    if (!sniffed)
+      await discard(415, `unrecognised file type; upload one of ${SUPPORTED_FORMATS.join(", ")}`);
+    const finalPath = saved.tempPath.replace(/\.upload$/, sniffed!.extension);
     await rename(saved.tempPath, finalPath);
 
     try {
       const job = createJob(db, {
         printerId,
+        user: req.user!,
+        presetId,
         filename: saved.filename,
         filePath: finalPath,
         byteSize: saved.byteSize,
-        documentFormat: sniffed.format,
+        documentFormat: sniffed!.format,
         options,
       });
-      return reply.code(201).send(toDto(job, getPrinter(db, job.printer_id)?.name));
+      return reply.code(201).send(toDto(db, job));
     }
     catch (err) {
       await removeQuietly(finalPath);
@@ -124,7 +126,7 @@ export function jobRoutes(app: FastifyInstance, db: Db, uploadDir: string): void
   });
 
   app.post("/api/jobs/:id/cancel", async (req) => {
-    const job = await cancelJob(db, idParam(req.params));
-    return toDto(job, getPrinter(db, job.printer_id)?.name);
+    const job = await cancelJob(db, idParam(req.params), req.user!);
+    return toDto(db, job);
   });
 }

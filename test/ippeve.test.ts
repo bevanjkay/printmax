@@ -1,3 +1,4 @@
+import type { InjectOptions } from "fastify";
 import type { PrinterDto } from "../src/shared/types.js";
 import type { VirtualPrinter } from "./helpers/ippeve.js";
 import { Buffer } from "node:buffer";
@@ -39,12 +40,17 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
   let workDir: string;
   let app: Awaited<ReturnType<typeof buildApp>>;
   let db: ReturnType<typeof openDb>;
+  let cookie: string;
+
+  const asAdmin = (opts: InjectOptions): InjectOptions => ({ ...opts, headers: { ...(opts.headers ?? {}), cookie } });
 
   beforeAll(async () => {
     printer = await startVirtualPrinter();
     workDir = await mkdtemp(path.join(tmpdir(), "printmax-test-"));
     db = openDb(":memory:");
     app = await buildApp({ db, uploadDir: workDir });
+    const setup = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { name: "Admin", email: "admin@example.org", password: "adminadmin" } });
+    cookie = `printmax_session=${setup.cookies.find(c => c.name === "printmax_session")!.value}`;
   });
 
   afterAll(async () => {
@@ -56,12 +62,12 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
   });
 
   async function firstPrinterId(): Promise<number> {
-    const printers = (await app.inject({ method: "GET", url: "/api/printers" })).json<PrinterDto[]>();
+    const printers = (await app.inject(asAdmin({ method: "GET", url: "/api/printers" }))).json<PrinterDto[]>();
     return printers[0]!.id;
   }
 
   it("adds a printer by URI and stores its discovered capabilities", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/printers", payload: { uri: printer.uri } });
+    const res = await app.inject(asAdmin({ method: "POST", url: "/api/printers", payload: { uri: printer.uri } }));
     expect(res.statusCode, res.body).toBe(201);
     const dto = res.json<PrinterDto>();
     expect(dto.name).toBe("printmax test");
@@ -69,24 +75,41 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     expect(dto.summary.sides).toEqual(["one-sided", "two-sided-long-edge", "two-sided-short-edge"]);
     expect(dto.summary.jobCreationAttributes).toContain("sides");
 
-    const caps = await app.inject({ method: "GET", url: `/api/printers/${dto.id}/caps` });
+    const caps = await app.inject(asAdmin({ method: "GET", url: `/api/printers/${dto.id}/caps` }));
     expect(caps.json()["printer-uri-supported"].type).toBe("uri");
   });
 
   it("rejects an unreachable printer with a readable error", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/printers", payload: { uri: "ipp://127.0.0.1:1/ipp/print" } });
+    const res = await app.inject(asAdmin({ method: "POST", url: "/api/printers", payload: { uri: "ipp://127.0.0.1:1/ipp/print" } }));
     expect(res.statusCode).toBe(502);
     expect(res.json().error).toMatch(/could not reach printer/);
   });
 
-  it("uploads a PDF, submits it with options and polls it to completion", async () => {
+  it("re-fetches capabilities without recording a change when nothing moved", async () => {
+    const id = await firstPrinterId();
+    const res = await app.inject(asAdmin({ method: "POST", url: `/api/printers/${id}/refresh` }));
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json<PrinterDto>().pendingChanges).toBe(0);
+  });
+
+  it("uploads a PDF, submits it through a preset with per-job overrides, and polls it to completion", async () => {
     const printerId = await firstPrinterId();
-    const options = JSON.stringify({ "sides": "two-sided-long-edge", "copies": 2, "print-quality": "high" });
-    const res = await app.inject({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId), options }, { name: "hello.pdf", content: MINIMAL_PDF }) });
+    const preset = await app.inject(asAdmin({ method: "POST", url: "/api/presets", payload: { printerId, name: "Duplex", scope: "global", options: { "sides": "two-sided-long-edge", "print-quality": "high" } } }));
+    expect(preset.statusCode, preset.body).toBe(201);
+    const presetId = preset.json<{ id: number }>().id;
+
+    const res = await app.inject(asAdmin({
+      method: "POST",
+      url: "/api/jobs",
+      ...multipart({ printerId: String(printerId), presetId: String(presetId), options: JSON.stringify({ copies: 2 }) }, { name: "hello.pdf", content: MINIMAL_PDF }),
+    }));
     expect(res.statusCode, res.body).toBe(201);
-    const job = res.json<{ id: number; state: string; documentFormat: string }>();
+    const job = res.json<{ id: number; state: string; documentFormat: string; options: Record<string, unknown>; presetId: number; userName: string }>();
     expect(job.state).toBe("queued");
     expect(job.documentFormat).toBe("application/pdf");
+    expect(job.presetId).toBe(presetId);
+    expect(job.userName).toBe("Admin");
+    expect(job.options).toEqual({ "sides": "two-sided-long-edge", "print-quality": "high", "copies": 2 });
 
     const worker = startJobWorker(db, { intervalMs: 60_000 });
     try {
@@ -110,14 +133,14 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
 
   it("refuses options the printer does not support before anything is sent", async () => {
     const printerId = await firstPrinterId();
-    const res = await app.inject({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId), options: JSON.stringify({ sides: "upside-down" }) }, { name: "x.pdf", content: MINIMAL_PDF }) });
+    const res = await app.inject(asAdmin({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId), options: JSON.stringify({ sides: "upside-down" }) }, { name: "x.pdf", content: MINIMAL_PDF }) }));
     expect(res.statusCode).toBe(422);
     expect(res.json().error).toMatch(/"sides" = upside-down is not supported/);
   });
 
   it("rejects files that are not PDF, PNG or JPEG", async () => {
     const printerId = await firstPrinterId();
-    const res = await app.inject({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId) }, { name: "x.docx", content: "PKnope" }) });
+    const res = await app.inject(asAdmin({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId) }, { name: "x.docx", content: "PKnope" }) }));
     expect(res.statusCode).toBe(415);
   });
 

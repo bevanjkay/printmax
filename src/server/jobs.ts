@@ -1,4 +1,5 @@
 import type { JobDto } from "../shared/types.js";
+import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
 import type { PrinterRow } from "./printers.js";
 import { readFile, unlink } from "node:fs/promises";
@@ -8,8 +9,10 @@ import { IppStatusError, IppTransportError } from "./ipp/client.js";
 import { attrValues } from "./ipp/codec.js";
 import { TERMINAL_JOB_STATES } from "./ipp/constants.js";
 import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/operations.js";
-import { buildJobAttributes, validateOptions } from "./ipp/options.js";
-import { capsFor, getPrinter, requirePrinter, targetFor } from "./printers.js";
+import { buildJobAttributes } from "./ipp/options.js";
+import { canUsePreset, getPreset } from "./presets.js";
+import { capsFor, getPrinter, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
+import { validateJobOptions } from "./validation.js";
 
 export interface JobRow {
   id: number;
@@ -60,21 +63,30 @@ export function requireJob(db: Db, id: number): JobRow {
   return job;
 }
 
-export function listJobs(db: Db, limit = 100): JobRow[] {
+export function listJobs(db: Db, opts: { userId?: number; limit?: number } = {}): JobRow[] {
+  const limit = opts.limit ?? 100;
+  if (opts.userId !== undefined)
+    return db.prepare("SELECT * FROM jobs WHERE user_id = ? ORDER BY id DESC LIMIT ?").all(opts.userId, limit) as unknown as JobRow[];
   return db.prepare("SELECT * FROM jobs ORDER BY id DESC LIMIT ?").all(limit) as unknown as JobRow[];
+}
+
+export function canSeeJob(job: JobRow, user: UserRow): boolean {
+  return user.role === "admin" || job.user_id === user.id;
 }
 
 export interface CreateJobInput {
   printerId: number;
-  userId?: number | null;
+  user: UserRow;
   presetId?: number | null;
   filename: string;
   filePath: string;
   byteSize: number;
   documentFormat: string;
+  /** Per-job overrides layered on top of the preset's options. */
   options: Record<string, unknown>;
 }
 
+/** Validates and queues a job. The preset's options and the overrides are merged into `options_final`. */
 export function createJob(db: Db, input: CreateJobInput): JobRow {
   const printer = requirePrinter(db, input.printerId);
   const caps = capsFor(printer);
@@ -83,7 +95,19 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
   if (formats.length > 0 && !formats.includes(input.documentFormat) && !formats.includes("application/octet-stream"))
     throw new HttpError(415, `${printer.name} does not accept ${input.documentFormat}; it supports ${formats.join(", ")}`);
 
-  const errors = validateOptions(input.options, caps);
+  let options = { ...input.options };
+  let presetId: number | null = null;
+  if (input.presetId) {
+    const preset = getPreset(db, input.presetId);
+    if (!preset || !canUsePreset(preset, input.user))
+      throw notFound("preset");
+    if (preset.printer_id !== printer.id)
+      throw new HttpError(400, "preset belongs to a different printer");
+    options = { ...(JSON.parse(preset.options) as Record<string, unknown>), ...input.options };
+    presetId = preset.id;
+  }
+
+  const errors = validateJobOptions(options, caps);
   if (errors.length > 0)
     throw new HttpError(422, errors.join("; "));
 
@@ -92,14 +116,14 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
     INSERT INTO jobs (user_id, printer_id, preset_id, filename, file_path, byte_size, document_format, options_final, state, next_attempt_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    input.userId ?? null,
+    input.user.id,
     printer.id,
-    input.presetId ?? null,
+    presetId,
     input.filename,
     input.filePath,
     input.byteSize,
     input.documentFormat,
-    JSON.stringify(input.options),
+    JSON.stringify(options),
     LocalJobState.queued,
     timestamp,
     timestamp,
@@ -112,6 +136,15 @@ function fail(db: Db, job: JobRow, message: string): void {
     .run(LocalJobState.failed, message, now(), job.id);
 }
 
+function requestingUserName(db: Db, job: JobRow): string {
+  if (job.user_id !== null) {
+    const user = db.prepare("SELECT name FROM users WHERE id = ?").get(job.user_id) as { name: string } | undefined;
+    if (user)
+      return user.name;
+  }
+  return "printmax";
+}
+
 /** Sends one queued job to its printer. Transport failures back off and retry; printer rejections fail immediately. */
 export async function submitJob(db: Db, job: JobRow): Promise<void> {
   const printer = getPrinter(db, job.printer_id);
@@ -120,15 +153,21 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
   if (!job.file_path)
     return fail(db, job, "uploaded file is no longer available");
 
+  const caps = capsFor(printer);
+  const options = JSON.parse(job.options_final) as Record<string, unknown>;
+  // Third validation pass: capabilities may have been re-fetched since the job was queued.
+  const problems = validateJobOptions(options, caps);
+  if (problems.length > 0)
+    return fail(db, job, problems.join("; "));
+
   try {
-    const caps = capsFor(printer);
     const data = await readFile(job.file_path);
     const status = await printJob(targetFor(printer), {
       data,
       documentFormat: job.document_format,
       jobName: job.filename,
-      requestingUserName: "printmax",
-      jobAttributes: buildJobAttributes(JSON.parse(job.options_final) as Record<string, unknown>, caps),
+      requestingUserName: requestingUserName(db, job),
+      jobAttributes: buildJobAttributes(options, caps),
     });
     db.prepare(`
       UPDATE jobs SET ipp_job_id = ?, state = ?, state_reasons = ?, error = NULL, attempts = attempts + 1,
@@ -179,14 +218,16 @@ export async function pollJob(db: Db, job: JobRow, printer: PrinterRow): Promise
   }
 }
 
-export async function cancelJob(db: Db, id: number): Promise<JobRow> {
+export async function cancelJob(db: Db, id: number, user: UserRow): Promise<JobRow> {
   const job = requireJob(db, id);
+  if (!canSeeJob(job, user))
+    throw notFound("job");
   if (isTerminal(job.state))
     throw new HttpError(409, `job is already ${job.state}`);
   if (job.ipp_job_id !== null) {
     const printer = requirePrinter(db, job.printer_id);
     try {
-      await ippCancelJob(targetFor(printer), job.ipp_job_id, "printmax");
+      await ippCancelJob(targetFor(printer), job.ipp_job_id, requestingUserName(db, job));
     }
     catch (err) {
       if (err instanceof IppTransportError)
@@ -208,9 +249,18 @@ export interface JobWorker {
   stop: () => void;
 }
 
-/** Drives submission retries and state polling. `tick` is exposed so tests can drive it deterministically. */
-export function startJobWorker(db: Db, opts: { intervalMs: number; onError?: (err: unknown) => void }): JobWorker {
+export interface JobWorkerOptions {
+  intervalMs: number;
+  /** Re-fetch printer capabilities older than this; 0 disables the schedule. */
+  capsRefreshHours?: number;
+  onError?: (err: unknown) => void;
+  onInfo?: (message: string, data?: Record<string, unknown>) => void;
+}
+
+/** Drives submission retries, state polling and scheduled capability refreshes. `tick` is exposed so tests can drive it. */
+export function startJobWorker(db: Db, opts: JobWorkerOptions): JobWorker {
   let running = false;
+  let lastCapsRefresh = 0;
 
   async function tick(): Promise<void> {
     if (running)
@@ -228,6 +278,14 @@ export function startJobWorker(db: Db, opts: { intervalMs: number; onError?: (er
         const printer = getPrinter(db, job.printer_id);
         if (printer)
           await pollJob(db, job, printer);
+      }
+
+      const hours = opts.capsRefreshHours ?? 0;
+      if (hours > 0 && Date.now() - lastCapsRefresh > 15 * 60_000) {
+        lastCapsRefresh = Date.now();
+        const failures = await refreshStalePrinters(db, hours);
+        for (const f of failures)
+          opts.onInfo?.("scheduled capability refresh failed", f);
       }
     }
     catch (err) {
@@ -267,11 +325,16 @@ export async function sweepExpiredFiles(db: Db, retentionDays: number): Promise<
   return removed;
 }
 
-export function toDto(job: JobRow, printerName?: string): JobDto {
+export function toDto(db: Db, job: JobRow): JobDto {
+  const printer = db.prepare("SELECT name FROM printers WHERE id = ?").get(job.printer_id) as { name: string } | undefined;
+  const user = job.user_id === null ? undefined : db.prepare("SELECT name FROM users WHERE id = ?").get(job.user_id) as { name: string } | undefined;
   return {
     id: job.id,
+    userId: job.user_id,
+    userName: user?.name ?? null,
     printerId: job.printer_id,
-    printerName: printerName ?? null,
+    printerName: printer?.name ?? null,
+    presetId: job.preset_id,
     filename: job.filename,
     byteSize: job.byte_size,
     documentFormat: job.document_format,

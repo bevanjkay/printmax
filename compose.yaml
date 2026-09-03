@@ -8,10 +8,14 @@ services:
     environment:
       RETENTION_DAYS: "7"
       POLL_INTERVAL_MS: "3000"
+      CAPS_REFRESH_HOURS: "24"
       MAX_UPLOAD_MB: "200"
     volumes:
       - data:/data
       - uploads:/data/uploads
+    # DNS-SD discovery needs multicast, which the default bridge network blocks.
+    # To use "Scan" from inside Docker, replace `ports:` with host networking:
+    # network_mode: host
 
 volumes:
   data:
