@@ -1,0 +1,18 @@
+services:
+  printmax:
+    build: .
+    image: printmax:local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      RETENTION_DAYS: "7"
+      POLL_INTERVAL_MS: "3000"
+      MAX_UPLOAD_MB: "200"
+    volumes:
+      - data:/data
+      - uploads:/data/uploads
+
+volumes:
+  data:
+  uploads:

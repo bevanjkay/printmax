@@ -1,0 +1,1262 @@
+{
+  "color-supported": {
+    "type": "boolean",
+    "values": [
+      false
+    ]
+  },
+  "copies-default": {
+    "type": "integer",
+    "values": [
+      1
+    ]
+  },
+  "copies-supported": {
+    "type": "rangeOfInteger",
+    "values": [
+      {
+        "min": 1,
+        "max": 999
+      }
+    ]
+  },
+  "document-password-supported": {
+    "type": "integer",
+    "values": [
+      1023
+    ]
+  },
+  "finishings-default": {
+    "type": "enum",
+    "values": [
+      3
+    ]
+  },
+  "finishings-supported": {
+    "type": "enum",
+    "values": [
+      3
+    ]
+  },
+  "media-bottom-margin-supported": {
+    "type": "integer",
+    "values": [
+      0,
+      1168
+    ]
+  },
+  "media-col-database": {
+    "type": "collection",
+    "values": [
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  21590
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  27940
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        }
+      },
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_legal_8.5x14in"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  21590
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  35560
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_legal_8.5x14in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        }
+      },
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "iso_a4_210x297mm"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  21000
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  29700
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "iso_a4_210x297mm"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            340
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            340
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        }
+      },
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_number-10_4.125x9.5in_by-pass-tray"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  10477
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  24130
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_number-10_4.125x9.5in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-source": {
+          "type": "keyword",
+          "values": [
+            "by-pass-tray"
+          ]
+        }
+      },
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "iso_dl_110x220mm_by-pass-tray"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  11000
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  22000
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "iso_dl_110x220mm"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-source": {
+          "type": "keyword",
+          "values": [
+            "by-pass-tray"
+          ]
+        }
+      }
+    ]
+  },
+  "media-col-default": {
+    "type": "collection",
+    "values": [
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in_main_stationery"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  21590
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  27940
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-source": {
+          "type": "keyword",
+          "values": [
+            "main"
+          ]
+        },
+        "media-type": {
+          "type": "keyword",
+          "values": [
+            "stationery"
+          ]
+        }
+      }
+    ]
+  },
+  "media-col-ready": {
+    "type": "collection",
+    "values": [
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in_main_stationery"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  21590
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  27940
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_letter_8.5x11in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-source": {
+          "type": "keyword",
+          "values": [
+            "main"
+          ]
+        },
+        "media-type": {
+          "type": "keyword",
+          "values": [
+            "stationery"
+          ]
+        }
+      },
+      {
+        "media-key": {
+          "type": "keyword",
+          "values": [
+            "na_number-10_4.125x9.5in_by-pass-tray_envelope"
+          ]
+        },
+        "media-size": {
+          "type": "collection",
+          "values": [
+            {
+              "x-dimension": {
+                "type": "integer",
+                "values": [
+                  10477
+                ]
+              },
+              "y-dimension": {
+                "type": "integer",
+                "values": [
+                  24130
+                ]
+              }
+            }
+          ]
+        },
+        "media-size-name": {
+          "type": "keyword",
+          "values": [
+            "na_number-10_4.125x9.5in"
+          ]
+        },
+        "media-bottom-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-left-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-right-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-top-margin": {
+          "type": "integer",
+          "values": [
+            635
+          ]
+        },
+        "media-source": {
+          "type": "keyword",
+          "values": [
+            "by-pass-tray"
+          ]
+        },
+        "media-type": {
+          "type": "keyword",
+          "values": [
+            "envelope"
+          ]
+        }
+      }
+    ]
+  },
+  "media-default": {
+    "type": "keyword",
+    "values": [
+      "na_letter_8.5x11in"
+    ]
+  },
+  "media-left-margin-supported": {
+    "type": "integer",
+    "values": [
+      340,
+      635
+    ]
+  },
+  "media-right-margin-supported": {
+    "type": "integer",
+    "values": [
+      340,
+      635
+    ]
+  },
+  "media-ready": {
+    "type": "keyword",
+    "values": [
+      "na_letter_8.5x11in",
+      "na_number-10_4.125x9.5in"
+    ]
+  },
+  "media-supported": {
+    "type": "keyword",
+    "values": [
+      "na_letter_8.5x11in",
+      "na_legal_8.5x14in",
+      "iso_a4_210x297mm",
+      "na_number-10_4.125x9.5in",
+      "iso_dl_110x220mm"
+    ]
+  },
+  "media-size-supported": {
+    "type": "collection",
+    "values": [
+      {
+        "x-dimension": {
+          "type": "integer",
+          "values": [
+            21590
+          ]
+        },
+        "y-dimension": {
+          "type": "integer",
+          "values": [
+            27940
+          ]
+        }
+      },
+      {
+        "x-dimension": {
+          "type": "integer",
+          "values": [
+            21590
+          ]
+        },
+        "y-dimension": {
+          "type": "integer",
+          "values": [
+            35560
+          ]
+        }
+      },
+      {
+        "x-dimension": {
+          "type": "integer",
+          "values": [
+            21000
+          ]
+        },
+        "y-dimension": {
+          "type": "integer",
+          "values": [
+            29700
+          ]
+        }
+      },
+      {
+        "x-dimension": {
+          "type": "integer",
+          "values": [
+            10477
+          ]
+        },
+        "y-dimension": {
+          "type": "integer",
+          "values": [
+            24130
+          ]
+        }
+      },
+      {
+        "x-dimension": {
+          "type": "integer",
+          "values": [
+            11000
+          ]
+        },
+        "y-dimension": {
+          "type": "integer",
+          "values": [
+            22000
+          ]
+        }
+      }
+    ]
+  },
+  "media-source-supported": {
+    "type": "keyword",
+    "values": [
+      "auto",
+      "main",
+      "manual",
+      "by-pass-tray"
+    ]
+  },
+  "media-top-margin-supported": {
+    "type": "integer",
+    "values": [
+      0,
+      102
+    ]
+  },
+  "media-type-supported": {
+    "type": "keyword",
+    "values": [
+      "auto",
+      "cardstock",
+      "envelope",
+      "labels",
+      "other",
+      "stationery",
+      "stationery-letterhead",
+      "transparency"
+    ]
+  },
+  "orientation-requested-default": {
+    "type": "enum",
+    "values": [
+      3
+    ]
+  },
+  "orientation-requested-supported": {
+    "type": "enum",
+    "values": [
+      3,
+      4,
+      5,
+      6
+    ]
+  },
+  "output-bin-default": {
+    "type": "keyword",
+    "values": [
+      "face-down"
+    ]
+  },
+  "output-bin-supported": {
+    "type": "keyword",
+    "values": [
+      "face-down"
+    ]
+  },
+  "overrides-supported": {
+    "type": "keyword",
+    "values": [
+      "document-numbers",
+      "media",
+      "media-col",
+      "orientation-requested",
+      "pages"
+    ]
+  },
+  "page-ranges-supported": {
+    "type": "boolean",
+    "values": [
+      true
+    ]
+  },
+  "pages-per-minute": {
+    "type": "integer",
+    "values": [
+      10
+    ]
+  },
+  "print-color-mode-default": {
+    "type": "keyword",
+    "values": [
+      "monochrome"
+    ]
+  },
+  "print-color-mode-supported": {
+    "type": "keyword",
+    "values": [
+      "monochrome"
+    ]
+  },
+  "print-content-optimize-default": {
+    "type": "keyword",
+    "values": [
+      "auto"
+    ]
+  },
+  "print-content-optimize-supported": {
+    "type": "keyword",
+    "values": [
+      "auto"
+    ]
+  },
+  "print-quality-default": {
+    "type": "enum",
+    "values": [
+      4
+    ]
+  },
+  "print-quality-supported": {
+    "type": "enum",
+    "values": [
+      3,
+      4,
+      5
+    ]
+  },
+  "print-rendering-intent-default": {
+    "type": "keyword",
+    "values": [
+      "auto"
+    ]
+  },
+  "print-rendering-intent-supported": {
+    "type": "keyword",
+    "values": [
+      "auto"
+    ]
+  },
+  "printer-device-id": {
+    "type": "textWithoutLanguage",
+    "values": [
+      "MFG:Example;MDL:Printer;CMD:PDF,JPEG,PNG;"
+    ]
+  },
+  "printer-input-tray": {
+    "type": "octetString",
+    "values": [
+      "type=sheetFeedAutoRemovableTray;mediafeed=0;mediaxfeed=0;maxcapacity=-2;level=-2;status=0;name=auto",
+      "type=sheetFeedAutoRemovableTray;mediafeed=0;mediaxfeed=0;maxcapacity=250;level=100;status=0;name=main",
+      "type=sheetFeedManual;mediafeed=0;mediaxfeed=0;maxcapacity=1;level=-2;status=0;name=manual",
+      "type=sheetFeedAutoNonRemovableTray;mediafeed=0;mediaxfeed=0;maxcapacity=25;level=-2;status=0;name=by-pass-tray"
+    ]
+  },
+  "printer-make-and-model": {
+    "type": "textWithoutLanguage",
+    "values": [
+      "Example Printer"
+    ]
+  },
+  "printer-resolution-default": {
+    "type": "resolution",
+    "values": [
+      {
+        "x": 600,
+        "y": 600,
+        "units": 3
+      }
+    ]
+  },
+  "printer-resolution-supported": {
+    "type": "resolution",
+    "values": [
+      {
+        "x": 600,
+        "y": 600,
+        "units": 3
+      }
+    ]
+  },
+  "printer-supply": {
+    "type": "octetString",
+    "values": [
+      "index=1;class=receptacleThatIsFilled;type=wasteToner;unit=percent;maxcapacity=100;level=25;colorantname=unknown;",
+      "index=2;class=supplyThatIsConsumed;type=toner;unit=percent;maxcapacity=100;level=75;colorantname=black;"
+    ]
+  },
+  "printer-supply-description": {
+    "type": "textWithoutLanguage",
+    "values": [
+      "Toner Waste Tank",
+      "Black Toner"
+    ]
+  },
+  "sides-default": {
+    "type": "keyword",
+    "values": [
+      "one-sided"
+    ]
+  },
+  "sides-supported": {
+    "type": "keyword",
+    "values": [
+      "one-sided",
+      "two-sided-long-edge",
+      "two-sided-short-edge"
+    ]
+  },
+  "charset-configured": {
+    "type": "charset",
+    "values": [
+      "utf-8"
+    ]
+  },
+  "charset-supported": {
+    "type": "charset",
+    "values": [
+      "us-ascii",
+      "utf-8"
+    ]
+  },
+  "compression-supported": {
+    "type": "keyword",
+    "values": [
+      "deflate",
+      "gzip",
+      "none"
+    ]
+  },
+  "document-format-default": {
+    "type": "mimeMediaType",
+    "values": [
+      "application/octet-stream"
+    ]
+  },
+  "document-format-supported": {
+    "type": "mimeMediaType",
+    "values": [
+      "application/octet-stream",
+      "application/pdf",
+      "image/jpeg",
+      "image/png"
+    ]
+  },
+  "generated-natural-language-supported": {
+    "type": "naturalLanguage",
+    "values": [
+      "en"
+    ]
+  },
+  "identify-actions-default": {
+    "type": "keyword",
+    "values": [
+      "sound"
+    ]
+  },
+  "identify-actions-supported": {
+    "type": "keyword",
+    "values": [
+      "display",
+      "sound"
+    ]
+  },
+  "ipp-features-supported": {
+    "type": "keyword",
+    "values": [
+      "ipp-everywhere"
+    ]
+  },
+  "ipp-versions-supported": {
+    "type": "keyword",
+    "values": [
+      "1.1",
+      "2.0"
+    ]
+  },
+  "job-creation-attributes-supported": {
+    "type": "keyword",
+    "values": [
+      "document-access",
+      "document-charset",
+      "document-format",
+      "document-message",
+      "document-metadata",
+      "document-name",
+      "document-natural-language",
+      "ipp-attribute-fidelity",
+      "job-name",
+      "job-priority",
+      "copies",
+      "document-password",
+      "finishings",
+      "media",
+      "orientation-requested",
+      "output-bin",
+      "overrides",
+      "page-ranges",
+      "print-color-mode",
+      "print-content-optimize",
+      "print-quality",
+      "print-rendering-intent",
+      "printer-resolution",
+      "sides"
+    ]
+  },
+  "job-ids-supported": {
+    "type": "boolean",
+    "values": [
+      true
+    ]
+  },
+  "job-k-octets-supported": {
+    "type": "rangeOfInteger",
+    "values": [
+      {
+        "min": 0,
+        "max": 1948404040
+      }
+    ]
+  },
+  "job-priority-default": {
+    "type": "integer",
+    "values": [
+      50
+    ]
+  },
+  "job-priority-supported": {
+    "type": "integer",
+    "values": [
+      1
+    ]
+  },
+  "job-sheets-default": {
+    "type": "nameWithoutLanguage",
+    "values": [
+      "none"
+    ]
+  },
+  "job-sheets-supported": {
+    "type": "nameWithoutLanguage",
+    "values": [
+      "none"
+    ]
+  },
+  "media-col-supported": {
+    "type": "keyword",
+    "values": [
+      "media-bottom-margin",
+      "media-left-margin",
+      "media-right-margin",
+      "media-size",
+      "media-size-name",
+      "media-source",
+      "media-top-margin",
+      "media-type"
+    ]
+  },
+  "multiple-document-handling-supported": {
+    "type": "keyword",
+    "values": [
+      "separate-documents-uncollated-copies",
+      "separate-documents-collated-copies"
+    ]
+  },
+  "multiple-document-jobs-supported": {
+    "type": "boolean",
+    "values": [
+      false
+    ]
+  },
+  "multiple-operation-time-out": {
+    "type": "integer",
+    "values": [
+      60
+    ]
+  },
+  "multiple-operation-time-out-action": {
+    "type": "keyword",
+    "values": [
+      "abort-job"
+    ]
+  },
+  "natural-language-configured": {
+    "type": "naturalLanguage",
+    "values": [
+      "en"
+    ]
+  },
+  "operations-supported": {
+    "type": "enum",
+    "values": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      57,
+      59,
+      60
+    ]
+  },
+  "pdl-override-supported": {
+    "type": "keyword",
+    "values": [
+      "attempted"
+    ]
+  },
+  "preferred-attributes-supported": {
+    "type": "boolean",
+    "values": [
+      false
+    ]
+  },
+  "printer-get-attributes-supported": {
+    "type": "keyword",
+    "values": [
+      "document-format"
+    ]
+  },
+  "printer-geo-location": {
+    "type": "unknown",
+    "values": [
+      null
+    ]
+  },
+  "printer-icons": {
+    "type": "uri",
+    "values": [
+      "https://localhost:8631/icon.png"
+    ]
+  },
+  "printer-is-accepting-jobs": {
+    "type": "boolean",
+    "values": [
+      true
+    ]
+  },
+  "printer-info": {
+    "type": "textWithoutLanguage",
+    "values": [
+      "Test Printer"
+    ]
+  },
+  "printer-location": {
+    "type": "textWithoutLanguage",
+    "values": [
+      ""
+    ]
+  },
+  "printer-more-info": {
+    "type": "uri",
+    "values": [
+      "https://localhost:8631/"
+    ]
+  },
+  "printer-name": {
+    "type": "nameWithoutLanguage",
+    "values": [
+      "Test Printer"
+    ]
+  },
+  "printer-organization": {
+    "type": "textWithoutLanguage",
+    "values": [
+      ""
+    ]
+  },
+  "printer-organizational-unit": {
+    "type": "textWithoutLanguage",
+    "values": [
+      ""
+    ]
+  },
+  "printer-supply-info-uri": {
+    "type": "uri",
+    "values": [
+      "https://localhost:8631/supplies"
+    ]
+  },
+  "printer-uri-supported": {
+    "type": "uri",
+    "values": [
+      "ipp://localhost:8631/ipp/print",
+      "ipps://localhost:8631/ipp/print"
+    ]
+  },
+  "printer-uuid": {
+    "type": "uri",
+    "values": [
+      "urn:uuid:90776659-1af4-360e-63be-e82ff2372702"
+    ]
+  },
+  "reference-uri-schemes-supported": {
+    "type": "uriScheme",
+    "values": [
+      "file",
+      "ftp",
+      "http",
+      "https"
+    ]
+  },
+  "uri-authentication-supported": {
+    "type": "keyword",
+    "values": [
+      "none",
+      "none"
+    ]
+  },
+  "uri-security-supported": {
+    "type": "keyword",
+    "values": [
+      "none",
+      "tls"
+    ]
+  },
+  "which-jobs-supported": {
+    "type": "keyword",
+    "values": [
+      "completed",
+      "not-completed",
+      "aborted",
+      "all",
+      "canceled",
+      "pending",
+      "pending-held",
+      "processing",
+      "processing-stopped"
+    ]
+  },
+  "printer-config-change-date-time": {
+    "type": "dateTime",
+    "values": [
+      "2026-09-03T00:59:41.000Z"
+    ]
+  },
+  "printer-config-change-time": {
+    "type": "integer",
+    "values": [
+      0
+    ]
+  },
+  "printer-current-time": {
+    "type": "dateTime",
+    "values": [
+      "2026-09-03T01:14:33.000Z"
+    ]
+  },
+  "printer-state": {
+    "type": "enum",
+    "values": [
+      3
+    ]
+  },
+  "printer-state-change-date-time": {
+    "type": "dateTime",
+    "values": [
+      "2026-09-03T00:59:41.000Z"
+    ]
+  },
+  "printer-state-change-time": {
+    "type": "integer",
+    "values": [
+      0
+    ]
+  },
+  "printer-state-message": {
+    "type": "textWithoutLanguage",
+    "values": [
+      "Idle."
+    ]
+  },
+  "printer-state-reasons": {
+    "type": "keyword",
+    "values": [
+      "none"
+    ]
+  },
+  "printer-up-time": {
+    "type": "integer",
+    "values": [
+      892
+    ]
+  },
+  "queued-job-count": {
+    "type": "integer",
+    "values": [
+      0
+    ]
+  }
+}

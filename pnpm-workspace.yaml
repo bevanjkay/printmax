@@ -1,0 +1,11 @@
+shellEmulator: true
+
+trustPolicy: no-downgrade
+
+allowBuilds:
+  esbuild: true
+
+# @babel/core pins semver@6, which predates npm trusted publishing; pnpm's default
+# no-downgrade policy would otherwise refuse to install it.
+trustPolicyExclude:
+  - semver@6.3.1
