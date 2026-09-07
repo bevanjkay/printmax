@@ -48,9 +48,10 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
 
-The container runs as the unprivileged `node` user (uid 1000). The named volume in
-`docker-compose.yml` inherits the right ownership; if you bind-mount a host directory instead,
-`chown 1000:1000` it first.
+The app runs as the unprivileged `node` user (uid 1000). The container starts as root only to
+hand `/data` to that user, so a bind-mounted host directory or a volume created by an older image
+works without preparation. If you start it with `--user` instead, the ownership step is skipped
+and `/data` must already be writable by that uid; the server says so plainly and exits if not.
 
 ### Network discovery
 

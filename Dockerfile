@@ -22,8 +22,9 @@ ENV NODE_ENV=production DATA_DIR=/data PORT=8080
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+COPY entrypoint.sh /usr/local/bin/printmax-entrypoint
 RUN mkdir -p /data/uploads && chown -R node:node /data
 VOLUME ["/data"]
 EXPOSE 8080
-USER node
+ENTRYPOINT ["printmax-entrypoint"]
 CMD ["node", "dist/server/index.js"]
