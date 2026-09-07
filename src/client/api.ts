@@ -20,8 +20,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 function json(method: string, body?: unknown): RequestInit {
   return {
     method,
-    headers: { "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   };
 }
 
