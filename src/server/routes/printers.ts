@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ValidationResult } from "../../shared/types.js";
+import type { ProbeResult, ValidationResult } from "../../shared/types.js";
 import type { Db } from "../db.js";
 import { acknowledgeCapsChange, listCapsChanges, toCapsChangeDto } from "../capsdiff.js";
 import { discoverPrinters } from "../discovery.js";
@@ -7,6 +7,7 @@ import { HttpError, notFound } from "../errors.js";
 import { buildForm } from "../form.js";
 import { applyResolvers } from "../ipp/constraints.js";
 import { addPrinter, capsFor, deletePrinter, discoveredCaps, listPrinters, overrideCaps, refreshPrinter, requirePrinter, setDefaults, setOverrides, toDto } from "../printers.js";
+import { probeOptions } from "../probe.js";
 import { validateJobOptions } from "../validation.js";
 import { idParam } from "./params.js";
 
@@ -35,6 +36,14 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
 
   /** The generated option editor: fields, choices and defaults from the printer's own attributes. */
   app.get("/api/printers/:id/form", async req => buildForm(capsFor(requirePrinter(db, idParam(req.params)))));
+
+  app.post("/api/printers/:id/probe", async (req): Promise<ProbeResult> => {
+    const printer = requirePrinter(db, idParam(req.params));
+    const body = (req.body ?? {}) as { options?: unknown };
+    if (typeof body.options !== "object" || body.options === null || Array.isArray(body.options))
+      throw new HttpError(400, "options must be an object");
+    return probeOptions(printer, body.options as Record<string, unknown>, req.user!.name);
+  });
 
   app.post("/api/printers/:id/validate", async (req): Promise<ValidationResult> => {
     const printer = requirePrinter(db, idParam(req.params));

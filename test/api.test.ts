@@ -188,6 +188,15 @@ describe("aPI", () => {
     });
   });
 
+  describe("printer probe", () => {
+    it("reports an unreachable printer rather than guessing", async () => {
+      const res = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/probe`, payload: { options: { sides: "one-sided" } } }));
+      expect(res.statusCode).toBe(502);
+      expect(res.json().error).toMatch(/printer not reachable/);
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/probe`, payload: { options: [] } }))).statusCode).toBe(400);
+    });
+  });
+
   describe("capability overrides and change tracking", () => {
     it("merges admin overrides into the effective capabilities and the generated form", async () => {
       const put = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/overrides`, payload: { "finishings-supported": { type: "enum", values: [3, 4, 20] } } }));

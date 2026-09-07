@@ -1,9 +1,9 @@
 import type { Buffer } from "node:buffer";
 import type { PrinterTarget } from "./client.js";
-import type { IppAttributes, IppGroup } from "./codec.js";
-import { ippRequest, toIppUri } from "./client.js";
+import type { IppAttributes, IppGroup, IppMessage } from "./codec.js";
+import { ippRequest, IppStatusError, toIppUri } from "./client.js";
 import { attrValue, attrValues, firstGroup, GroupTag } from "./codec.js";
-import { JOB_STATES, Operation } from "./constants.js";
+import { JOB_STATES, Operation, statusName } from "./constants.js";
 
 function operationGroup(uri: string, extra: IppAttributes = {}): IppGroup {
   return {
@@ -72,17 +72,47 @@ export async function printJob(target: PrinterTarget, input: PrintJobInput): Pro
   return parseJobStatus(firstGroup(msg, GroupTag.job));
 }
 
-export async function validateJob(target: PrinterTarget, input: Omit<PrintJobInput, "data">): Promise<void> {
+export interface ValidateJobResult {
+  accepted: boolean;
+  status: string;
+  message: string | null;
+  /** Attributes the printer would ignore or reject, echoed back with the offending values. */
+  unsupported: IppAttributes;
+}
+
+function validateResult(msg: IppMessage, ok: boolean): ValidateJobResult {
+  const unsupported = firstGroup(msg, GroupTag.unsupported) ?? {};
+  return {
+    accepted: ok && Object.keys(unsupported).length === 0,
+    status: statusName(msg.code),
+    message: attrValue<string>(firstGroup(msg, GroupTag.operation), "status-message") ?? null,
+    unsupported,
+  };
+}
+
+/**
+ * Asks the printer whether it would accept these job attributes, without printing.
+ * Fidelity is requested so the printer rejects instead of silently substituting.
+ */
+export async function validateJob(target: PrinterTarget, input: Omit<PrintJobInput, "data">): Promise<ValidateJobResult> {
   const groups: IppGroup[] = [
     operationGroup(target.uri, {
       "requesting-user-name": { type: "nameWithoutLanguage", values: [input.requestingUserName] },
       "job-name": { type: "nameWithoutLanguage", values: [input.jobName] },
       "document-format": { type: "mimeMediaType", values: [input.documentFormat] },
+      "ipp-attribute-fidelity": { type: "boolean", values: [true] },
     }),
   ];
   if (input.jobAttributes && Object.keys(input.jobAttributes).length > 0)
     groups.push({ tag: GroupTag.job, attributes: input.jobAttributes });
-  await ippRequest(target, Operation.ValidateJob, groups);
+  try {
+    return validateResult(await ippRequest(target, Operation.ValidateJob, groups), true);
+  }
+  catch (err) {
+    if (err instanceof IppStatusError)
+      return validateResult(err.response, false);
+    throw err;
+  }
 }
 
 const JOB_STATUS_ATTRIBUTES = ["job-id", "job-state", "job-state-reasons", "job-state-message", "job-impressions-completed"];

@@ -68,6 +68,15 @@ export interface ValidationResult {
   resolved: Record<string, unknown>;
 }
 
+/** What the printer itself said to a Validate-Job for a set of options. */
+export interface ProbeResult {
+  accepted: boolean;
+  status: string;
+  message: string | null;
+  /** Attribute name to the value the printer refused, or "not supported" for the whole attribute. */
+  unsupported: Record<string, string>;
+}
+
 export interface PresetDto {
   id: number;
   printerId: number;

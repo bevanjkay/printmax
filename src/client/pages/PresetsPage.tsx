@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import type { FormField, PresetDto, PresetExportItem, PresetImportResult, PrinterDto, UserDto, ValidationResult } from "../../shared/types.js";
+import type { FormField, PresetDto, PresetExportItem, PresetImportResult, PrinterDto, ProbeResult, UserDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
@@ -30,12 +30,33 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
   const [scope, setScope] = useState<"global" | "user">(preset?.scope ?? (user.role === "admin" ? "global" : "user"));
   const [options, setOptions] = useState<OptionValues>(preset?.options ?? {});
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [probe, setProbe] = useState<ProbeResult | null>(null);
+  const [probing, setProbing] = useState(false);
   const [busy, setBusy] = useState(false);
   const { error, fail, clear } = useAsyncError();
 
   useDebounced((current) => {
     api.validate(printer.id, current).then(setValidation).catch(fail);
   }, options, 300);
+
+  function changeOptions(next: OptionValues) {
+    setOptions(next);
+    setProbe(null);
+  }
+
+  async function checkWithPrinter() {
+    clear();
+    setProbing(true);
+    try {
+      setProbe(await api.probe(printer.id, options));
+    }
+    catch (err) {
+      fail(err);
+    }
+    finally {
+      setProbing(false);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -69,6 +90,7 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
               {chosen === 0 ? "Choose the settings this preset should fix." : `${chosen} setting${chosen === 1 ? "" : "s"} fixed; everything else follows the printer's defaults.`}
             </span>
             <Button onClick={onCancel}>Cancel</Button>
+            <Button onClick={() => void checkWithPrinter()} loading={probing} disabled={(validation?.errors.length ?? 0) > 0}>Check with printer</Button>
             <Button type="submit" variant="primary" loading={busy} disabled={!name || (validation?.errors.length ?? 0) > 0}>Save preset</Button>
           </>
         )}
@@ -92,8 +114,29 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
           )}
         </div>
         <div className="panel-body">
-          <OptionsForm fields={fields} value={options} onChange={setOptions} />
-          <ValidationNotice result={validation} value={options} onApply={setOptions} />
+          <OptionsForm fields={fields} value={options} onChange={changeOptions} />
+          <ValidationNotice result={validation} value={options} onApply={changeOptions} />
+          {probe && (probe.accepted
+            ? <Notice tone="success">The printer accepted these settings.</Notice>
+            : (
+                <Notice tone="warning">
+                  <strong>The printer would not accept this.</strong>
+                  {" "}
+                  {probe.message ?? probe.status}
+                  {Object.keys(probe.unsupported).length > 0 && (
+                    <ul className="notice-list">
+                      {Object.entries(probe.unsupported).map(([k, v]) => (
+                        <li key={k}>
+                          <b>{k}</b>
+                          :
+                          {" "}
+                          {v}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Notice>
+              ))}
           {error && <Notice tone="error">{error}</Notice>}
         </div>
       </Panel>

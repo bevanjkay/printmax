@@ -3,6 +3,7 @@ import type { CapsChangeDto, DiscoveredPrinter, FormField, PrinterDto } from "..
 import { useEffect, useState } from "react";
 import { keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
 import { enumValue } from "../../shared/enums.js";
+import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconPrinter, IconRefresh, IconSearch } from "../components/Icons.js";
@@ -245,6 +246,8 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
 
   const listed = Object.entries(overrides).filter(([k]) => !k.endsWith("-default"));
   const count = listed.length;
+  const reported = (overrides[attr] ?? discovered[attr])?.values.map(v => String(v)) ?? [];
+  const suggestions = attr ? standardValues(attr).filter(v => !reported.includes(v)) : [];
 
   return (
     <details className="disclosure">
@@ -270,14 +273,25 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
             <option value="">Choose an attribute</option>
             {listAttrs.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
-          <input className="control" style={{ width: "auto", minWidth: 180 }} aria-label="Value to add" value={value} onChange={e => setValue(e.target.value)} placeholder={attr.startsWith("finishings") ? "staple-top-left" : "value"} />
+          <input className="control" style={{ width: "auto", minWidth: 180 }} aria-label="Value to add" list="override-values" value={value} onChange={e => setValue(e.target.value)} placeholder={suggestions[0] ?? "value"} />
+          <datalist id="override-values">
+            {suggestions.map(v => <option key={v} value={v} />)}
+          </datalist>
           <Button type="submit" size="md" disabled={!attr || !value}>Add value</Button>
         </form>
         {attr && (
           <p className="xs muted">
             Currently reported:
             {" "}
-            {(overrides[attr] ?? discovered[attr])?.values.map(v => String(v)).join(", ")}
+            {reported.join(", ")}
+            {suggestions.length > 0 && (
+              <>
+                <br />
+                Registered values it does not report:
+                {" "}
+                {suggestions.join(", ")}
+              </>
+            )}
           </p>
         )}
         {error && <Notice tone="error">{error}</Notice>}

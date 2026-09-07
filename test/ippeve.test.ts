@@ -138,6 +138,18 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     expect(res.json().error).toMatch(/"sides" = upside-down is not supported/);
   });
 
+  it("asks the printer itself whether it would accept a preset's options", async () => {
+    const printerId = await firstPrinterId();
+    const ok = await app.inject(asAdmin({ method: "POST", url: `/api/printers/${printerId}/probe`, payload: { options: { sides: "two-sided-long-edge", copies: 2 } } }));
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json()).toMatchObject({ accepted: true, unsupported: {} });
+
+    const bad = await app.inject(asAdmin({ method: "POST", url: `/api/printers/${printerId}/probe`, payload: { options: { media: "iso_a0_841x1189mm" } } }));
+    expect(bad.statusCode, bad.body).toBe(200);
+    expect(bad.json().accepted).toBe(false);
+    expect(bad.json().unsupported).toEqual({ media: "iso_a0_841x1189mm" });
+  });
+
   it("rejects files that are not PDF, PNG or JPEG", async () => {
     const printerId = await firstPrinterId();
     const res = await app.inject(asAdmin({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId) }, { name: "x.docx", content: "PKnope" }) }));

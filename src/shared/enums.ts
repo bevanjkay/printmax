@@ -95,6 +95,11 @@ function tableFor(attrName: string): Record<number, string> | undefined {
   return ENUM_TABLES[base];
 }
 
+/** Every registered keyword for an enum attribute, in numeric order. */
+export function enumKeywords(attrName: string): string[] {
+  return Object.values(tableFor(attrName) ?? {});
+}
+
 export function enumName(attrName: string, value: number): string {
   return tableFor(attrName)?.[value] ?? String(value);
 }

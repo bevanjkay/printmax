@@ -91,6 +91,11 @@ Only settings a printer takes over IPP survive: paper size, tray, paper type, du
 corner staples, orientation and copies. Folding, saddle stitch, booklet imposition and image-quality
 settings are listed per preset on stderr and in the imported preset's description.
 
+The preset editor's "Check with printer" button sends the options as an IPP Validate-Job, so the
+device itself confirms it would accept them without printing anything. The capability overrides
+editor suggests registered IANA/PWG values the printer did not report; use the same check to
+confirm a value before relying on it.
+
 ## Layout
 
 - `src/server/ipp/` — RFC 8010 codec, HTTP transport, operations, option typing and validation,

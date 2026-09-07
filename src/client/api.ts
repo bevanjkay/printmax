@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, ProbeResult, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -38,6 +38,7 @@ export const api = {
   getForm: (printerId: number) => request<FormField[]>(`/api/printers/${printerId}/form`),
   getCaps: (printerId: number, layer: "merged" | "discovered" | "overrides" = "merged") => request<Record<string, { type: string; values: unknown[] }>>(`/api/printers/${printerId}/caps?layer=${layer}`),
   validate: (printerId: number, options: Options) => request<ValidationResult>(`/api/printers/${printerId}/validate`, json("POST", { options })),
+  probe: (printerId: number, options: Options) => request<ProbeResult>(`/api/printers/${printerId}/probe`, json("POST", { options })),
   addPrinter: (input: { name?: string; uri: string; username?: string; password?: string }) => request<PrinterDto>("/api/printers", json("POST", input)),
   refreshPrinter: (id: number) => request<PrinterDto>(`/api/printers/${id}/refresh`, json("POST")),
   deletePrinter: (id: number) => request<void>(`/api/printers/${id}`, json("DELETE")),
