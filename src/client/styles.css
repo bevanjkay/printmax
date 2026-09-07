@@ -329,6 +329,21 @@ details.disclosure > summary:hover { background: var(--surface-2); }
 details.disclosure > summary .chev { transition: transform var(--dur) var(--ease); color: var(--text-3); }
 details.disclosure[open] > summary .chev { transform: rotate(90deg); }
 details.disclosure > .disclosure-body { padding: 10px 0 0; }
+/* ---------- accordion ---------- */
+
+.accordion { margin-top: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.accordion > details + details { border-top: 1px solid var(--border); }
+.accordion > details:first-child > summary { border-radius: var(--r-md) var(--r-md) 0 0; }
+.accordion > details:last-child:not([open]) > summary { border-radius: 0 0 var(--r-md) var(--r-md); }
+.accordion > details:only-child > summary { border-radius: var(--r-md); }
+.accordion > details > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: var(--fs-sm); font-weight: 500; cursor: pointer; user-select: none; }
+.accordion > details > summary::-webkit-details-marker { display: none; }
+.accordion > details > summary:hover { background: var(--surface-2); }
+.accordion > details > summary:focus-visible { outline-offset: -2px; }
+.accordion > details > summary .chev { flex: none; color: var(--text-3); transition: transform var(--dur) var(--ease); }
+.accordion > details[open] > summary .chev { transform: rotate(90deg); }
+.accordion .section-count { margin-left: auto; font-weight: 400; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.accordion > details > .accordion-body { padding: 2px 14px 14px; }
 .inline-form { display: flex; gap: 8px; align-items: center; }
 .inline-form .control { width: auto; }
 .help { font-size: var(--fs-sm); color: var(--text-2); }

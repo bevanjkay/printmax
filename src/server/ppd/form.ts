@@ -22,6 +22,15 @@ const KEY_LABELS: Record<string, string> = {
   Collate: "Collate",
 };
 
+/**
+ * Drivers page a long group across several numbered ones ("Color Settings 1" through
+ * "Color Settings 4"); to someone filling in the form they are one section.
+ */
+function sectionLabel(label: string): string {
+  const merged = label.replace(/\s*\d+$/, "").trim();
+  return merged.length > 0 ? merged : label;
+}
+
 /** "Saddle Stitch (Portrait) / Saddle Stitch (Landscape)" reads as "Saddle Stitch" in a form and a summary. */
 function shortLabel(label: string): string {
   const short = label.replace(/\s*\(.*$/, "").trim();
@@ -37,7 +46,7 @@ export function ppdFields(ppd: ParsedPpd): FormField[] {
       widget: "select" as const,
       choices: o.choices.map(c => ({ value: c.value, label: shortLabel(c.label) })),
       ...(o.default !== null ? { default: o.default } : {}),
-      ...(o.groupLabel ? { help: o.groupLabel } : {}),
+      ...(o.groupLabel ? { group: sectionLabel(o.groupLabel) } : {}),
     }));
 }
 
