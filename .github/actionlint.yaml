@@ -1,0 +1,6 @@
+# GitHub's `uses: $/...` self-repository syntax (zizmor's self-repository audit) is not yet
+# understood by actionlint; drop this once rhysd/actionlint#732 is released.
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'reusable workflow call "\$/.+" at "uses" is not following the format'
