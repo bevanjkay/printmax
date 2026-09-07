@@ -28,6 +28,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
 
   await app.register(fastifyCookie);
+  // Browsers send "Content-Type: application/json" on body-less POSTs; Fastify rejects those by default.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+    if (body === "")
+      return done(null, undefined);
+    try {
+      done(null, JSON.parse(body as string));
+    }
+    catch (err) {
+      done(Object.assign(err as Error, { statusCode: 400 }), undefined);
+    }
+  });
   await app.register(fastifyMultipart, {
     limits: { fileSize: opts.maxUploadBytes ?? 200 * 1024 * 1024, files: 1 },
   });

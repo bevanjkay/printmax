@@ -96,6 +96,13 @@ describe("aPI", () => {
       expect((await app.inject(as(cookie, { method: "POST", url: "/api/auth/logout" }))).statusCode).toBe(204);
       expect((await app.inject(as(cookie, { method: "GET", url: "/api/auth/me" }))).json().user).toBeNull();
     });
+
+    it("accepts body-less POSTs that still declare a JSON content type, as browsers send them", async () => {
+      const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "pat@example.org", password: "newnewnew1" } });
+      const cookie = `printmax_session=${login.cookies.find(c => c.name === "printmax_session")!.value}`;
+      const res = await app.inject(as(cookie, { method: "POST", url: "/api/auth/logout", headers: { "content-type": "application/json" } }));
+      expect(res.statusCode, res.body).toBe(204);
+    });
   });
 
   describe("generated form and validation", () => {
