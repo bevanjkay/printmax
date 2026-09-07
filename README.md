@@ -94,7 +94,9 @@ settings are listed per preset on stderr and in the imported preset's descriptio
 The preset editor's "Check with printer" button sends the options as an IPP Validate-Job, so the
 device itself confirms it would accept them without printing anything. The capability overrides
 editor suggests registered IANA/PWG values the printer did not report; use the same check to
-confirm a value before relying on it.
+confirm a value before relying on it. A rejection is reliable; a pass is only as good as the
+device's own checking (the Toshiba e-STUDIO accepts any job attribute and only validates the
+document format).
 
 ## Layout
 
