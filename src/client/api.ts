@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PrinterDto, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -51,6 +51,8 @@ export const api = {
   createPreset: (input: { printerId: number; name: string; description?: string; scope: "global" | "user"; options: Options }) => request<PresetDto>("/api/presets", json("POST", input)),
   updatePreset: (id: number, input: { printerId: number; name: string; description?: string; scope: "global" | "user"; options: Options }) => request<PresetDto>(`/api/presets/${id}`, json("PUT", input)),
   deletePreset: (id: number) => request<void>(`/api/presets/${id}`, json("DELETE")),
+  exportPresets: (printerId: number) => request<PresetExport>(`/api/presets/export?printerId=${printerId}`),
+  importPresets: (printerId: number, presets: PresetExportItem[]) => request<PresetImportResult>("/api/presets/import", json("POST", { printerId, presets })),
 
   listJobs: (all = false) => request<JobDto[]>(`/api/jobs${all ? "?all=true" : ""}`),
   cancelJob: (id: number) => request<JobDto>(`/api/jobs/${id}/cancel`, json("POST")),

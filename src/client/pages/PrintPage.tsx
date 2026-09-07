@@ -139,7 +139,8 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
                         <label key={p.id} className={`preset-card${presetId === p.id ? " active" : ""}${p.problems.length > 0 ? " unavailable" : ""}`}>
                           <input type="radio" name="preset" value={p.id} checked={presetId === p.id} disabled={p.problems.length > 0} onChange={() => choosePreset(p.id)} />
                           <strong>{p.name}</strong>
-                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (p.description || summariseOptions(fields, p.options, PRIMARY_ATTRIBUTES) || "Printer defaults")}</span>
+                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (summariseOptions(fields, p.options, PRIMARY_ATTRIBUTES) || "Printer defaults")}</span>
+                          {p.problems.length === 0 && p.description && <span className="note">{p.description}</span>}
                         </label>
                       ))}
                       <label className={`preset-card${presetId === null ? " active" : ""}`}>

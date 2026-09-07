@@ -85,6 +85,15 @@ export function IconLogout(p: Props) {
   );
 }
 
+export function IconDownload(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M8 3v7.5M5 7.5l3 3 3-3" />
+      <path d="M2.75 10.5v1.75A1.25 1.25 0 004 13.5h8a1.25 1.25 0 001.25-1.25V10.5" />
+    </Svg>
+  );
+}
+
 export function IconUpload(p: Props) {
   return (
     <Svg {...p}>

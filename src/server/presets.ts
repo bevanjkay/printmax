@@ -1,4 +1,4 @@
-import type { PresetDto } from "../shared/types.js";
+import type { PresetDto, PresetExportItem } from "../shared/types.js";
 import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
 import { now } from "./db.js";
@@ -109,6 +109,56 @@ export function deletePreset(db: Db, id: number, user: UserRow): void {
   if (!canEditPreset(existing, user))
     throw new HttpError(403, "you cannot delete this preset");
   db.prepare("DELETE FROM presets WHERE id = ?").run(id);
+}
+
+export function exportPresets(db: Db, printerId: number, user: UserRow): PresetExportItem[] {
+  return listPresetsFor(db, user, printerId).map(p => ({
+    name: p.name,
+    description: p.description,
+    scope: p.scope,
+    options: JSON.parse(p.options) as Record<string, unknown>,
+  }));
+}
+
+function presetExists(db: Db, printerId: number, name: string, scope: "global" | "user", user: UserRow): boolean {
+  return db.prepare("SELECT 1 FROM presets WHERE printer_id = ? AND name = ? AND scope = ? AND (scope = 'global' OR owner_id = ?)")
+    .get(printerId, name, scope, user.id) !== undefined;
+}
+
+export interface ImportOutcome {
+  imported: PresetRow[];
+  skipped: Array<{ name: string; reason: string }>;
+}
+
+/**
+ * Creates each preset in turn and reports the ones that could not be created, rather than
+ * failing the whole file. Non-admins get personal copies of shared presets.
+ */
+export function importPresets(db: Db, printerId: number, items: unknown, user: UserRow): ImportOutcome {
+  if (!Array.isArray(items))
+    throw new HttpError(400, "presets must be an array");
+  if (items.length > 500)
+    throw new HttpError(400, "at most 500 presets per import");
+  requirePrinter(db, printerId);
+  const outcome: ImportOutcome = { imported: [], skipped: [] };
+  items.forEach((item: unknown, i) => {
+    const raw = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : `preset ${i + 1}`;
+    const scope = raw.scope === "global" && user.role === "admin" ? "global" : "user";
+    if (presetExists(db, printerId, name, scope, user)) {
+      outcome.skipped.push({ name, reason: "already exists" });
+      return;
+    }
+    try {
+      outcome.imported.push(createPreset(db, { printerId, name: raw.name, description: raw.description, scope, options: raw.options }, user));
+    }
+    catch (err) {
+      if (!(err instanceof HttpError))
+        throw err;
+      outcome.skipped.push({ name, reason: err.message });
+    }
+  });
+  return outcome;
 }
 
 export function toPresetDto(db: Db, preset: PresetRow, user: UserRow): PresetDto {

@@ -83,6 +83,27 @@ export interface PresetDto {
   updatedAt: string;
 }
 
+export const PRESET_EXPORT_FORMAT = "printmax-presets/1";
+
+export interface PresetExportItem {
+  name: string;
+  description: string | null;
+  scope: "global" | "user";
+  options: Record<string, unknown>;
+}
+
+/** A preset file as downloaded from, and accepted by, the Presets page. */
+export interface PresetExport {
+  format: typeof PRESET_EXPORT_FORMAT;
+  printer: { name: string; makeModel: string | null };
+  presets: PresetExportItem[];
+}
+
+export interface PresetImportResult {
+  imported: PresetDto[];
+  skipped: Array<{ name: string; reason: string }>;
+}
+
 export interface JobDto {
   id: number;
   userId: number | null;

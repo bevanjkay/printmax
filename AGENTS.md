@@ -4,6 +4,7 @@
 - The app speaks IPP directly (`src/server/ipp/`). Do not add CUPS to the print path.
 - Job options are a flat `{ "ipp-attribute": value }` map everywhere (presets, overrides, `options_final`). Do not invent a friendlier schema.
 - Value typing and validation live in `src/server/ipp/options.ts` and are driven by the printer's own `*-supported`/`*-default` attributes. Only `KNOWN_TYPES` and `ipp/enums.ts` are hand-maintained.
+- Some printers (the Toshiba e-STUDIO fixture) only take tray and paper type inside `media-col`. Validate and evaluate constraints on the flat map (`buildAttributes`); fold `media`/`media-source`/`media-type` into `media-col` only when building Print-Job attributes (`buildJobAttributes`).
 - Develop and test against `ippeveprinter` (ships with CUPS; `/usr/bin/ippeveprinter` on macOS, `cups-ipp-utils` on Debian). The end-to-end test starts it itself and skips if it is missing.
 - Fixtures in `fixtures/` are verbatim Get-Printer-Attributes dumps from `pnpm dump-caps <uri>`; never hand-edit them.
 - Validation: `pnpm lint`, `pnpm check`, `pnpm test`, `pnpm build` (see `.github/workflows/checks.yml`).

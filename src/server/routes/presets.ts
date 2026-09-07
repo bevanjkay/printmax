@@ -1,8 +1,18 @@
 import type { FastifyInstance } from "fastify";
+import type { PresetExport, PresetImportResult } from "../../shared/types.js";
 import type { Db } from "../db.js";
+import { PRESET_EXPORT_FORMAT } from "../../shared/types.js";
 import { HttpError } from "../errors.js";
-import { canUsePreset, createPreset, deletePreset, listPresetsFor, requirePreset, toPresetDto, updatePreset } from "../presets.js";
+import { canUsePreset, createPreset, deletePreset, exportPresets, importPresets, listPresetsFor, requirePreset, toPresetDto, updatePreset } from "../presets.js";
+import { requirePrinter } from "../printers.js";
 import { idParam } from "./params.js";
+
+function printerIdFrom(value: unknown): number {
+  const id = Number(value);
+  if (value === undefined || value === "" || !Number.isInteger(id))
+    throw new HttpError(400, "printerId is required");
+  return id;
+}
 
 export function presetRoutes(app: FastifyInstance, db: Db): void {
   app.get("/api/presets", async (req) => {
@@ -11,6 +21,25 @@ export function presetRoutes(app: FastifyInstance, db: Db): void {
     if (id !== undefined && !Number.isInteger(id))
       throw new HttpError(400, "invalid printerId");
     return listPresetsFor(db, req.user!, id).map(p => toPresetDto(db, p, req.user!));
+  });
+
+  app.get("/api/presets/export", async (req) => {
+    const printerId = printerIdFrom((req.query as { printerId?: string }).printerId);
+    const printer = requirePrinter(db, printerId);
+    const file: PresetExport = {
+      format: PRESET_EXPORT_FORMAT,
+      printer: { name: printer.name, makeModel: printer.make_model },
+      presets: exportPresets(db, printerId, req.user!),
+    };
+    return file;
+  });
+
+  app.post("/api/presets/import", async (req) => {
+    const body = (req.body ?? {}) as { printerId?: unknown; presets?: unknown };
+    const printerId = printerIdFrom(body.printerId);
+    const { imported, skipped } = importPresets(db, printerId, body.presets, req.user!);
+    const result: PresetImportResult = { imported: imported.map(p => toPresetDto(db, p, req.user!)), skipped };
+    return result;
   });
 
   app.get("/api/presets/:id", async (req) => {

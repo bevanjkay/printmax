@@ -134,7 +134,8 @@ function coerceValue(name: string, type: IppValueType, v: unknown, caps: IppAttr
   }
 }
 
-function buildAttributes(options: OptionMap, caps: IppAttributes): IppAttributes {
+/** Typed attributes, one per option, exactly as named in the option map. Use for validation and constraints. */
+export function buildAttributes(options: OptionMap, caps: IppAttributes): IppAttributes {
   const out: IppAttributes = {};
   for (const [name, raw] of Object.entries(options)) {
     if (raw === undefined || raw === null || raw === "")
@@ -147,9 +148,63 @@ function buildAttributes(options: OptionMap, caps: IppAttributes): IppAttributes
   return out;
 }
 
+const MEDIA_COL_MEMBERS = ["media-source", "media-type"];
+
+/**
+ * Members a printer only accepts inside `media-col` (PWG 5100.7): it lists `media-col`
+ * but not the flat attribute under job-creation-attributes-supported, yet still
+ * publishes `<member>-supported` at the top level.
+ */
+export function mediaColMembers(caps: IppAttributes): string[] {
+  const creatable = attrValues<string>(caps, "job-creation-attributes-supported");
+  if (!creatable.includes("media-col"))
+    return [];
+  const members = attrValues<string>(caps, "media-col-supported");
+  return MEDIA_COL_MEMBERS.filter(name => !creatable.includes(name) && members.includes(name) && caps[`${name}-supported`] !== undefined);
+}
+
+const MEDIA_SIZE_RE = /_(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(mm|in)$/;
+
+/** `media-size` for a PWG 5101.1 self-describing name such as iso_a4_210x297mm, in hundredths of a millimetre. */
+export function mediaSizeFromName(name: string): IppCollection | undefined {
+  const m = MEDIA_SIZE_RE.exec(name);
+  if (!m)
+    return undefined;
+  const scale = m[3] === "in" ? 2540 : 100;
+  return {
+    "x-dimension": { type: "integer", values: [Math.round(Number(m[1]) * scale)] },
+    "y-dimension": { type: "integer", values: [Math.round(Number(m[2]) * scale)] },
+  };
+}
+
+/**
+ * Moves tray and paper type into `media-col` for printers that only take them there,
+ * carrying the paper size along as `media-size` so `media` and `media-col` are not both sent.
+ */
+function foldMediaCol(attrs: IppAttributes, caps: IppAttributes): IppAttributes {
+  const fold = mediaColMembers(caps).filter(name => attrs[name] !== undefined);
+  if (fold.length === 0)
+    return attrs;
+  const existing = attrs["media-col"]?.values[0];
+  const col: IppCollection = { ...(typeof existing === "object" && existing !== null ? existing as IppCollection : {}) };
+  const out: IppAttributes = { ...attrs };
+  for (const name of fold) {
+    col[name] = attrs[name]!;
+    delete out[name];
+  }
+  const media = attrs.media?.values[0];
+  const size = typeof media === "string" && col["media-size"] === undefined ? mediaSizeFromName(media) : undefined;
+  if (size) {
+    col["media-size"] = { type: "collection", values: [size] };
+    delete out.media;
+  }
+  out["media-col"] = { type: "collection", values: [col] };
+  return out;
+}
+
 /** Job template attributes ready for the job attribute group of Print-Job. */
 export function buildJobAttributes(options: OptionMap, caps: IppAttributes): IppAttributes {
-  return buildAttributes(options, caps);
+  return foldMediaCol(buildAttributes(options, caps), caps);
 }
 
 function describe(name: string, v: IppValue): string {
@@ -166,17 +221,18 @@ function describe(name: string, v: IppValue): string {
 export function validateOptions(options: OptionMap, caps: IppAttributes): string[] {
   const errors: string[] = [];
   const creatable = attrValues<string>(caps, "job-creation-attributes-supported");
+  const folded = mediaColMembers(caps);
 
   let attrs: IppAttributes;
   try {
-    attrs = buildJobAttributes(options, caps);
+    attrs = buildAttributes(options, caps);
   }
   catch (err) {
     return [(err as Error).message];
   }
 
   for (const [name, attr] of Object.entries(attrs)) {
-    if (creatable.length > 0 && !creatable.includes(name)) {
+    if (creatable.length > 0 && !creatable.includes(name) && !folded.includes(name)) {
       errors.push(`"${name}" is not a job attribute this printer accepts`);
       continue;
     }

@@ -76,7 +76,7 @@ const ENUM_TABLES: Record<string, Record<number, string>> = {
     101: "fold-engineering-z",
   },
   "print-quality": { 3: "draft", 4: "normal", 5: "high" },
-  "orientation-requested": { 3: "portrait", 4: "landscape", 5: "reverse-landscape", 6: "reverse-portrait" },
+  "orientation-requested": { 3: "portrait", 4: "landscape", 5: "reverse-landscape", 6: "reverse-portrait", 7: "none" },
   "job-state": {
     3: "pending",
     4: "pending-held",

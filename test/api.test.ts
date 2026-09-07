@@ -1,6 +1,6 @@
 import type { FastifyInstance, InjectOptions } from "fastify";
 import type { IppAttributes } from "../src/server/ipp/codec.js";
-import type { CapsChangeDto, FormField, PresetDto, UserDto } from "../src/shared/types.js";
+import type { CapsChangeDto, FormField, PresetDto, PresetExport, PresetImportResult, UserDto } from "../src/shared/types.js";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -150,6 +150,32 @@ describe("aPI", () => {
       const ok = await app.inject(as(userCookie, { method: "PUT", url: `/api/presets/${personalId}`, payload: { printerId, name: "My A4 duplex", options: { media: "iso_a4_210x297mm", sides: "two-sided-long-edge" } } }));
       expect(ok.statusCode, ok.body).toBe(200);
       expect(ok.json<PresetDto>().options).toEqual({ media: "iso_a4_210x297mm", sides: "two-sided-long-edge" });
+    });
+
+    it("exports a printer's presets as a file and imports one, reporting what it skipped", async () => {
+      const file = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets/export?printerId=${printerId}` }))).json<PresetExport>();
+      expect(file.format).toBe("printmax-presets/1");
+      expect(file.printer.name).toBe("Fixture");
+      expect(file.presets).toEqual([{ name: "Duplex draft", description: null, scope: "global", options: { "sides": "two-sided-long-edge", "print-quality": "draft" } }]);
+
+      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/presets/import", payload: { printerId, presets: [
+        ...file.presets,
+        { name: "Thick card", scope: "global", options: { media: "iso_a4_210x297mm", sides: "one-sided" } },
+        { name: "Impossible", scope: "global", options: { sides: "upside-down" } },
+        { scope: "global", options: {} },
+      ] } }));
+      expect(res.statusCode, res.body).toBe(200);
+      const result = res.json<PresetImportResult>();
+      expect(result.imported.map(p => p.name)).toEqual(["Thick card"]);
+      expect(result.skipped).toEqual([
+        { name: "Duplex draft", reason: "already exists" },
+        { name: "Impossible", reason: expect.stringMatching(/"sides" = upside-down is not supported/) },
+        { name: "preset 4", reason: "name is required" },
+      ]);
+
+      const mine = (await app.inject(as(userCookie, { method: "POST", url: "/api/presets/import", payload: { printerId, presets: [{ name: "Thick card", scope: "global", options: {} }] } }))).json<PresetImportResult>();
+      expect(mine.imported[0]).toMatchObject({ name: "Thick card", scope: "user", editable: true });
+      expect((await app.inject(as(userCookie, { method: "POST", url: "/api/presets/import", payload: { printerId, presets: "nope" } }))).statusCode).toBe(400);
     });
 
     it("flags presets whose options the printer no longer supports", async () => {

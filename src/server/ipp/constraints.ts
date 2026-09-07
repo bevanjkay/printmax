@@ -8,7 +8,7 @@
 import type { IppAttributes, IppCollection, IppValue } from "./codec.js";
 import { enumName } from "../../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./codec.js";
-import { buildJobAttributes } from "./options.js";
+import { buildAttributes } from "./options.js";
 
 export interface ConstraintViolation {
   resolverName: string;
@@ -54,7 +54,7 @@ export function checkConstraints(options: Record<string, unknown>, caps: IppAttr
   if (constraints.length === 0)
     return [];
   const resolvers = attrValues<IppCollection>(caps, "job-resolvers-supported");
-  const attrs = buildJobAttributes(options, caps);
+  const attrs = buildAttributes(options, caps);
   const violations: ConstraintViolation[] = [];
 
   for (const constraint of constraints) {

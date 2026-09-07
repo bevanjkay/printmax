@@ -107,6 +107,9 @@ export function keywordLabel(value: string | number): string {
     const pretty = /^[a-z]{1,3}\d{0,2}$/.test(name!) ? name!.toUpperCase() : name!.replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase());
     return `${pretty} (${width}×${height} ${unit})`;
   }
+  const vendor = /^(?:[a-z0-9-]+\.)+([a-z0-9-]+)$/.exec(text);
+  if (vendor)
+    return vendor[1]!.replace(/(\D)(\d+)$/, "$1 $2").replace(/^\w/, c => c.toUpperCase());
   return text.replace(/[-_]/g, " ").replace(/^\w/, c => c.toUpperCase());
 }
 

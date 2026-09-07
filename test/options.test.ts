@@ -78,3 +78,40 @@ describe("choicesFor", () => {
     expect(choicesFor(caps, "nonexistent")).toEqual({ choices: [], default: undefined });
   });
 });
+
+describe("media-col folding", () => {
+  const toshiba = JSON.parse(readFileSync(new URL("../fixtures/toshiba-e-studio3515ac.json", import.meta.url), "utf8")) as IppAttributes;
+
+  it("moves tray and paper type into media-col for printers that only take them there", () => {
+    const attrs = buildJobAttributes({ "media": "iso_a4_210x297mm", "media-source": "by-pass-tray", "media-type": "jp.co.toshibatec.thick3", "sides": "one-sided" }, toshiba);
+    expect(attrs).toEqual({
+      "sides": { type: "keyword", values: ["one-sided"] },
+      "media-col": {
+        type: "collection",
+        values: [{
+          "media-source": { type: "keyword", values: ["by-pass-tray"] },
+          "media-type": { type: "keyword", values: ["jp.co.toshibatec.thick3"] },
+          "media-size": {
+            type: "collection",
+            values: [{
+              "x-dimension": { type: "integer", values: [21000] },
+              "y-dimension": { type: "integer", values: [29700] },
+            }],
+          },
+        }],
+      },
+    });
+  });
+
+  it("leaves media flat when there is nothing to fold, and never folds for printers that accept the flat attributes", () => {
+    expect(buildJobAttributes({ media: "iso_a4_210x297mm" }, toshiba)).toEqual({ media: { type: "keyword", values: ["iso_a4_210x297mm"] } });
+    expect(buildJobAttributes({ "media-source": "main" }, caps)).toEqual({ "media-source": { type: "keyword", values: ["main"] } });
+  });
+
+  it("validates folded members against their own -supported lists", () => {
+    expect(validateOptions({ "media-source": "by-pass-tray", "media-type": "envelope", "media": "iso_dl_110x220mm" }, toshiba)).toEqual([]);
+    const errors = validateOptions({ "media-source": "by-pass-tray", "media-type": "cardboard" }, toshiba);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/"media-type" = cardboard is not supported/);
+  });
+});

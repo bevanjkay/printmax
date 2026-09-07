@@ -77,6 +77,20 @@ Capture a printer's attributes as a fixture:
 pnpm dump-caps ipp://printer/ipp/print [username password] > fixtures/my-printer.json
 ```
 
+## Preset files
+
+The Presets page exports a printer's presets as JSON and imports the same format; presets whose
+options the printer rejects are listed rather than failing the whole file. To convert presets from
+Zevrix BatchOutput PDF (which embed Toshiba e-STUDIO PPD features) into that format:
+
+```sh
+pnpm batchoutput-presets > presets.json   # reads ~/Library/Application Support/Zevrix/BatchOutput PDF/Presets
+```
+
+Only settings a printer takes over IPP survive: paper size, tray, paper type, duplex, colour,
+corner staples, orientation and copies. Folding, saddle stitch, booklet imposition and image-quality
+settings are listed per preset on stderr and in the imported preset's description.
+
 ## Layout
 
 - `src/server/ipp/` — RFC 8010 codec, HTTP transport, operations, option typing and validation,

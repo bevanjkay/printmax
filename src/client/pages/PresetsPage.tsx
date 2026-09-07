@@ -1,10 +1,10 @@
 import type { FormEvent } from "react";
-import type { FormField, PresetDto, PrinterDto, UserDto, ValidationResult } from "../../shared/types.js";
+import type { FormField, PresetDto, PresetExportItem, PresetImportResult, PrinterDto, UserDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
-import { IconPlus, IconPresets } from "../components/Icons.js";
+import { IconDownload, IconPlus, IconPresets, IconUpload } from "../components/Icons.js";
 import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
@@ -101,6 +101,24 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
   );
 }
 
+/** Accepts a printmax preset file, or a bare array of presets. */
+function presetsInFile(text: string): PresetExportItem[] {
+  const parsed: unknown = JSON.parse(text);
+  const items = Array.isArray(parsed) ? parsed : (parsed as { presets?: unknown } | null)?.presets;
+  if (!Array.isArray(items))
+    throw new Error("That file is not a printmax preset export.");
+  return items as PresetExportItem[];
+}
+
+function download(filename: string, data: unknown): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function optionLabel(fields: FormField[], key: string): string {
   return fields.find(f => f.name === key)?.label ?? key;
 }
@@ -117,6 +135,9 @@ export function PresetsPage({ user, printers }: Props) {
   const [presets, setPresets] = useState<PresetDto[] | null>(null);
   const [fields, setFields] = useState<FormField[]>([]);
   const [editing, setEditing] = useState<PresetDto | null | "new">(null);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<PresetImportResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { error, fail, clear } = useAsyncError();
 
   const refresh = useCallback(async () => {
@@ -148,6 +169,34 @@ export function PresetsPage({ user, printers }: Props) {
     }
   }
 
+  async function importFile(file: File) {
+    clear();
+    setImported(null);
+    setImporting(true);
+    try {
+      const result = await api.importPresets(printer!.id, presetsInFile(await file.text()));
+      setImported(result);
+      await refresh();
+    }
+    catch (err) {
+      fail(err);
+    }
+    finally {
+      setImporting(false);
+    }
+  }
+
+  async function exportAll() {
+    clear();
+    try {
+      const file = await api.exportPresets(printer!.id);
+      download(`${printer!.name.replace(/[^\w-]+/g, "-").toLowerCase()}-presets.json`, file);
+    }
+    catch (err) {
+      fail(err);
+    }
+  }
+
   if (!printer) {
     return (
       <Panel>
@@ -167,14 +216,46 @@ export function PresetsPage({ user, printers }: Props) {
           onChange={(e) => {
             setPrinterId(Number(e.target.value));
             setEditing(null);
+            setImported(null);
           }}
         >
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <div className="spacer" />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file)
+              void importFile(file);
+          }}
+        />
+        <Button icon={<IconUpload />} loading={importing} onClick={() => fileRef.current?.click()}>Import</Button>
+        {presets !== null && presets.length > 0 && <Button icon={<IconDownload />} onClick={() => void exportAll()}>Export</Button>}
         <Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")} disabled={editing === "new"}>New preset</Button>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
+      {imported && (
+        <Notice tone={imported.imported.length > 0 ? "success" : "warning"}>
+          {imported.imported.length === 0 ? "Nothing was imported." : `Imported ${imported.imported.length} preset${imported.imported.length === 1 ? "" : "s"}.`}
+          {imported.skipped.length > 0 && (
+            <ul className="notice-list">
+              {imported.skipped.map(s => (
+                <li key={`${s.name}:${s.reason}`}>
+                  <b>{s.name}</b>
+                  :
+                  {" "}
+                  {s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Notice>
+      )}
 
       {editing !== null && (
         <PresetEditor

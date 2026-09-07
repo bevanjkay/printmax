@@ -443,6 +443,7 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 .preset-card input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .preset-card strong { font-weight: 500; font-size: var(--fs-sm); }
 .preset-card span { font-size: var(--fs-xs); color: var(--text-2); }
+.preset-card .note { color: var(--text-3); }
 .preset-card.unavailable { opacity: 0.55; cursor: not-allowed; }
 .segmented.full button { white-space: normal; line-height: 1.2; padding: 0 6px; }
 @media (max-width: 880px) {
@@ -452,3 +453,8 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 @media (prefers-color-scheme: dark) {
   select.control { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%238f939e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E"); }
 }
+
+/* ---------- preset import ---------- */
+
+.notice-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.notice-list b { font-weight: 500; }

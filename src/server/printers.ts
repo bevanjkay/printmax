@@ -9,7 +9,7 @@ import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError, toHttpUrl } from "./ipp/client.js";
 import { attrValue, attrValues } from "./ipp/codec.js";
 import { getPrinterAttributes } from "./ipp/operations.js";
-import { buildJobAttributes, mergeCaps, validateOptions } from "./ipp/options.js";
+import { buildAttributes, mergeCaps, validateOptions } from "./ipp/options.js";
 
 export interface PrinterRow {
   id: number;
@@ -187,7 +187,7 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
       problems.push(...errors);
       continue;
     }
-    const attr = buildJobAttributes({ [name]: value }, caps)[name];
+    const attr = buildAttributes({ [name]: value }, caps)[name];
     if (attr)
       overrides[`${name}-default`] = attr;
   }

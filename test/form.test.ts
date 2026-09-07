@@ -65,3 +65,25 @@ describe("keywordLabel", () => {
     expect(keywordLabel("some-unknown_thing")).toBe("Some unknown thing");
   });
 });
+
+describe("buildForm for a printer that takes tray and paper type through media-col", () => {
+  const toshiba = JSON.parse(readFileSync(new URL("../fixtures/toshiba-e-studio3515ac.json", import.meta.url), "utf8")) as IppAttributes;
+  const fields = buildForm(toshiba);
+  const byName = Object.fromEntries(fields.map(f => [f.name, f]));
+
+  it("offers Tray and Paper type as ordinary fields", () => {
+    expect(byName["media-source"]?.choices?.map(c => c.value)).toEqual(["auto", "tray-1", "tray-2", "tray-3", "by-pass-tray"]);
+    expect(byName["media-type"]?.label).toBe("Paper type");
+    expect(byName["media-type"]?.default).toBe("stationery");
+    expect(byName["media-source"]?.default).toBeUndefined();
+    expect(fields.map(f => f.name)).not.toContain("media-col");
+  });
+
+  it("gives vendor keywords readable labels", () => {
+    const labels = Object.fromEntries((byName["media-type"]?.choices ?? []).map(c => [c.value, c.label]));
+    expect(labels["jp.co.toshibatec.thick3"]).toBe("Thick 3");
+    expect(labels["jp.co.toshibatec.recycled"]).toBe("Recycled");
+    expect(labels.stationery).toBe("Plain paper");
+    expect(keywordLabel("jp.co.toshibatec.special1")).toBe("Special 1");
+  });
+});

@@ -4,10 +4,11 @@ import type { FormField } from "../shared/types.js";
  * `job-creation-attributes-supported` is the field list, `<attr>-supported` the choices,
  * `<attr>-default` the initial value. Only labels and widget types are static.
  */
-import type { IppAttributes, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
+import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
 import { ATTRIBUTE_UI, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
+import { mediaColMembers } from "./ipp/options.js";
 
 const ORDER = Object.keys(ATTRIBUTE_UI);
 
@@ -33,10 +34,20 @@ function displayValue(name: string, type: string, v: IppValue): string | number 
   return typeof v === "boolean" ? String(v) : v;
 }
 
+/** `<name>-default`, or for members folded into media-col, the member of `media-col-default`. */
+function defaultAttr(caps: IppAttributes, name: string, folded: string[]): IppAttribute | undefined {
+  const own = caps[`${name}-default`];
+  if (own || !folded.includes(name))
+    return own;
+  const col = attrValue<IppCollection>(caps, "media-col-default");
+  return typeof col === "object" && col !== null ? col[name] : undefined;
+}
+
 export function buildForm(caps: IppAttributes): FormField[] {
   const creatable = attrValues<string>(caps, "job-creation-attributes-supported");
+  const folded = mediaColMembers(caps);
   const candidates = creatable.length > 0
-    ? creatable
+    ? [...creatable, ...folded]
     : Object.keys(caps).filter(k => k.endsWith("-supported")).map(k => k.slice(0, -"-supported".length));
 
   const fields: FormField[] = [];
@@ -46,7 +57,8 @@ export function buildForm(caps: IppAttributes): FormField[] {
     const ui = ATTRIBUTE_UI[name];
     const supported = caps[`${name}-supported`];
     const supportedValues = supported && !isOutOfBand(supported.type) ? supported.values : [];
-    const def = attrValue<IppValue>(caps, `${name}-default`);
+    const defAttr = defaultAttr(caps, name, folded);
+    const def = defAttr && !isOutOfBand(defAttr.type) ? defAttr.values[0] : undefined;
     const widget = ui?.widget ?? (supported?.type === "rangeOfInteger" ? "number" : "select");
 
     const field: FormField = {
@@ -87,10 +99,9 @@ export function buildForm(caps: IppAttributes): FormField[] {
       continue; // unknown free-form attribute; not worth a widget without a label
     }
 
-    const defAttr = caps[`${name}-default`];
     if (def !== undefined && def !== null && defAttr) {
       field.default = widget === "multiselect"
-        ? attrValues<IppValue>(caps, `${name}-default`).map(v => displayValue(name, defAttr.type, v))
+        ? defAttr.values.map(v => displayValue(name, defAttr.type, v))
         : displayValue(name, defAttr.type, def);
     }
     fields.push(field);
