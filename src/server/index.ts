@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { accessSync, constants, mkdirSync } from "node:fs";
 import process from "node:process";
 import { buildApp } from "./app.js";
 import { purgeExpiredSessions } from "./auth.js";
@@ -8,7 +8,16 @@ import { startJobWorker, sweepExpiredFiles } from "./jobs.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  mkdirSync(config.uploadDir, { recursive: true });
+  try {
+    mkdirSync(config.uploadDir, { recursive: true });
+    accessSync(config.dataDir, constants.W_OK);
+    accessSync(config.uploadDir, constants.W_OK);
+  }
+  catch (err) {
+    const uid = process.getuid?.() ?? "?";
+    console.error(`printmax cannot write to ${config.dataDir} (${(err as NodeJS.ErrnoException).code ?? err}). The server runs as uid ${uid}; make the directory writable by it, e.g. chown 1000:1000 the host path mounted at /data.`);
+    process.exit(1);
+  }
   const db = openDb(config.dbPath);
 
   const app = await buildApp({
