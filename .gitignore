@@ -4,6 +4,4 @@ data/
 *.tsbuildinfo
 .env
 .DS_Store
-.impeccable/review/
-.impeccable/build/
-.impeccable/direction-payload.json
+.impeccable/
