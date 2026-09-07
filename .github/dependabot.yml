@@ -1,0 +1,43 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: !!str 08:00
+      timezone: Australia/Melbourne
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+  - package-ecosystem: github-actions
+    directory: /
+    exclude-paths:
+      - .github/workflows/actionlint.yml
+    schedule:
+      interval: weekly
+      day: monday
+      time: !!str 08:00
+      timezone: Australia/Melbourne
+    groups:
+      gh-actions:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: !!str 08:00
+      timezone: Australia/Melbourne
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
