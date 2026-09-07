@@ -2,6 +2,7 @@ import type { InjectOptions } from "fastify";
 import type { PrinterDto } from "../src/shared/types.js";
 import type { VirtualPrinter } from "./helpers/ippeve.js";
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/server/app.js";
 import { openDb } from "../src/server/db.js";
 import { getJob, startJobWorker } from "../src/server/jobs.js";
+import { ghostscriptAvailable } from "../src/server/ppd/ghostscript.js";
 import { ippeveprinterAvailable, startVirtualPrinter } from "./helpers/ippeve.js";
 
 const MINIMAL_PDF = [
@@ -128,6 +130,44 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     }
     finally {
       worker.stop();
+    }
+  });
+
+  it("prints through a PPD in PostScript mode as the driver would", async () => {
+    if (!(await ghostscriptAvailable()))
+      return;
+    const printerId = await firstPrinterId();
+    const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
+    expect((await app.inject(asAdmin({ method: "PUT", url: `/api/printers/${printerId}/ppd`, payload: { ppd } }))).statusCode).toBe(200);
+    expect((await app.inject(asAdmin({ method: "PUT", url: `/api/printers/${printerId}/mode`, payload: { mode: "postscript" } }))).statusCode).toBe(200);
+    try {
+      const pdf = readFileSync(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url), "latin1");
+      const res = await app.inject(asAdmin({
+        method: "POST",
+        url: "/api/jobs",
+        ...multipart({ printerId: String(printerId), options: JSON.stringify({ "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 2 }) }, { name: "booklet.pdf", content: pdf }),
+      }));
+      expect(res.statusCode, res.body).toBe(201);
+      const job = res.json<{ id: number }>();
+      const worker = startJobWorker(db, { intervalMs: 60_000 });
+      try {
+        const deadline = Date.now() + 20_000;
+        let row = getJob(db, job.id)!;
+        while (Date.now() < deadline && !FINISHED.includes(row.state)) {
+          await worker.tick();
+          row = getJob(db, job.id)!;
+          if (!FINISHED.includes(row.state))
+            await new Promise(r => setTimeout(r, 300));
+        }
+        expect(row.error, String(row.error)).toBeNull();
+        expect(row.state).toBe("completed");
+      }
+      finally {
+        worker.stop();
+      }
+    }
+    finally {
+      await app.inject(asAdmin({ method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
     }
   });
 

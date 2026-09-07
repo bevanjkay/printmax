@@ -46,7 +46,7 @@ export async function startVirtualPrinter(name = "printmax test"): Promise<Virtu
     "-d",
     spool,
     "-f",
-    "application/pdf,image/jpeg,image/png",
+    "application/pdf,image/jpeg,image/png,application/postscript,application/octet-stream",
     "-2",
     name,
   ], { stdio: ["ignore", "ignore", "pipe"] });

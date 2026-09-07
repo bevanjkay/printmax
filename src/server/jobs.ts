@@ -1,6 +1,8 @@
 import type { JobDto } from "../shared/types.js";
 import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
+import type { IppAttributes } from "./ipp/codec.js";
+import type { ParsedPpd } from "./ppd/parser.js";
 import type { PrinterRow } from "./printers.js";
 import { readFile, unlink } from "node:fs/promises";
 import { now } from "./db.js";
@@ -10,8 +12,11 @@ import { attrValues } from "./ipp/codec.js";
 import { TERMINAL_JOB_STATES } from "./ipp/constants.js";
 import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/operations.js";
 import { buildJobAttributes } from "./ipp/options.js";
+import { assemblePostScript } from "./ppd/assemble.js";
+import { ppdChoices } from "./ppd/form.js";
+import { pdfToPostScript } from "./ppd/ghostscript.js";
 import { canUsePreset, getPreset } from "./presets.js";
-import { capsFor, getPrinter, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
+import { getPrinter, profileFor, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
 import { validateJobOptions } from "./validation.js";
 
 export interface JobRow {
@@ -89,11 +94,17 @@ export interface CreateJobInput {
 /** Validates and queues a job. The preset's options and the overrides are merged into `options_final`. */
 export function createJob(db: Db, input: CreateJobInput): JobRow {
   const printer = requirePrinter(db, input.printerId);
-  const caps = capsFor(printer);
+  const profile = profileFor(printer);
+  const caps = profile.caps;
 
   const formats = attrValues<string>(caps, "document-format-supported");
-  if (formats.length > 0 && !formats.includes(input.documentFormat) && !formats.includes("application/octet-stream"))
+  if (profile.mode === "postscript") {
+    if (input.documentFormat !== "application/pdf")
+      throw new HttpError(415, `${printer.name} is in PostScript mode, which prints PDF only`);
+  }
+  else if (formats.length > 0 && !formats.includes(input.documentFormat) && !formats.includes("application/octet-stream")) {
     throw new HttpError(415, `${printer.name} does not accept ${input.documentFormat}; it supports ${formats.join(", ")}`);
+  }
 
   let options = { ...input.options };
   let presetId: number | null = null;
@@ -107,7 +118,7 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
     presetId = preset.id;
   }
 
-  const errors = validateJobOptions(options, caps);
+  const errors = validateJobOptions(options, profile);
   if (errors.length > 0)
     throw new HttpError(422, errors.join("; "));
 
@@ -153,21 +164,25 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
   if (!job.file_path)
     return fail(db, job, "uploaded file is no longer available");
 
-  const caps = capsFor(printer);
+  const profile = profileFor(printer);
+  const caps = profile.caps;
   const options = JSON.parse(job.options_final) as Record<string, unknown>;
   // Third validation pass: capabilities may have been re-fetched since the job was queued.
-  const problems = validateJobOptions(options, caps);
+  const problems = validateJobOptions(options, profile);
   if (problems.length > 0)
     return fail(db, job, problems.join("; "));
 
+  const userName = requestingUserName(db, job);
   try {
-    const data = await readFile(job.file_path);
+    const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
+      ? await postScriptDocument(job, profile.ppd, options, caps, userName)
+      : { data: await readFile(job.file_path), documentFormat: job.document_format, jobAttributes: buildJobAttributes(options, caps) };
     const status = await printJob(targetFor(printer), {
       data,
-      documentFormat: job.document_format,
+      documentFormat,
       jobName: job.filename,
-      requestingUserName: requestingUserName(db, job),
-      jobAttributes: buildJobAttributes(options, caps),
+      requestingUserName: userName,
+      jobAttributes,
     });
     db.prepare(`
       UPDATE jobs SET ipp_job_id = ?, state = ?, state_reasons = ?, error = NULL, attempts = attempts + 1,
@@ -193,6 +208,19 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
     }
     fail(db, job, message);
   }
+}
+
+/** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
+async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string) {
+  const chosen = ppdChoices(options);
+  const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
+  const document = await pdfToPostScript(job.file_path!, paper ? { paper } : {});
+  const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document });
+  // Named PostScript where the printer lists it (auto-sensing printers cannot sniff past the PJL header); raw otherwise.
+  const formats = attrValues<string>(caps, "document-format-supported");
+  const documentFormat = formats.includes("application/postscript") ? "application/postscript" : "application/octet-stream";
+  const copies = options.copies;
+  return { data, documentFormat, jobAttributes: buildJobAttributes(copies === undefined ? {} : { copies }, caps) };
 }
 
 /** Refreshes the state of one submitted job from the printer. */

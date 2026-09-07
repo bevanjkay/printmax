@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile --prod
 
 FROM node:24-bookworm-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends cups-ipp-utils ca-certificates \
+  && apt-get install -y --no-install-recommends cups-ipp-utils ghostscript ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production DATA_DIR=/data PORT=8080

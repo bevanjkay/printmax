@@ -5,10 +5,12 @@ import type { FormField } from "../shared/types.js";
  * `<attr>-default` the initial value. Only labels and widget types are static.
  */
 import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
+import type { PrinterProfile } from "./printers.js";
 import { ATTRIBUTE_UI, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
 import { mediaColMembers } from "./ipp/options.js";
+import { ppdFields } from "./ppd/form.js";
 
 const ORDER = Object.keys(ATTRIBUTE_UI);
 
@@ -113,6 +115,14 @@ export function buildForm(caps: IppAttributes): FormField[] {
     return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib) || a.name.localeCompare(b.name);
   });
   return fields;
+}
+
+/** The form for a printer in its current mode: IPP attributes, or copies plus the PPD's options. */
+export function formFor(profile: PrinterProfile): FormField[] {
+  if (profile.mode !== "postscript" || !profile.ppd)
+    return buildForm(profile.caps);
+  const copies = buildForm(profile.caps).find(f => f.name === "copies") ?? { name: "copies", label: "Copies", widget: "number" as const, min: 1, max: 999, default: 1 };
+  return [copies, ...ppdFields(profile.ppd)];
 }
 
 /** Initial option map for a printer: every field's default, in option-map form. */

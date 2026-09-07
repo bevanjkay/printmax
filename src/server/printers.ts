@@ -1,7 +1,8 @@
-import type { PrinterDto, PrinterSummary } from "../shared/types.js";
+import type { PrinterDto, PrinterSummary, PrintMode } from "../shared/types.js";
 import type { Db } from "./db.js";
 import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
+import type { ParsedPpd } from "./ppd/parser.js";
 import { enumName } from "../shared/enums.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
@@ -10,6 +11,7 @@ import { IppStatusError, IppTransportError, toHttpUrl } from "./ipp/client.js";
 import { attrValue, attrValues } from "./ipp/codec.js";
 import { getPrinterAttributes } from "./ipp/operations.js";
 import { buildAttributes, mergeCaps, validateOptions } from "./ipp/options.js";
+import { parsePpd } from "./ppd/parser.js";
 
 export interface PrinterRow {
   id: number;
@@ -24,6 +26,60 @@ export interface PrinterRow {
   caps_overrides: string;
   caps_fetched_at: string | null;
   created_at: string;
+  ppd: string | null;
+  print_mode: PrintMode;
+}
+
+/** Everything validation and the form need to know about a printer. */
+export interface PrinterProfile {
+  caps: IppAttributes;
+  ppd: ParsedPpd | null;
+  mode: PrintMode;
+}
+
+const ppdCache = new Map<number, { text: string; parsed: ParsedPpd }>();
+
+export function parsedPpdFor(printer: PrinterRow): ParsedPpd | null {
+  if (!printer.ppd)
+    return null;
+  const cached = ppdCache.get(printer.id);
+  if (cached && cached.text === printer.ppd)
+    return cached.parsed;
+  const parsed = parsePpd(printer.ppd);
+  ppdCache.set(printer.id, { text: printer.ppd, parsed });
+  return parsed;
+}
+
+export function profileFor(printer: PrinterRow): PrinterProfile {
+  return { caps: capsFor(printer), ppd: parsedPpdFor(printer), mode: printer.print_mode };
+}
+
+export function setPpd(db: Db, id: number, text: unknown): PrinterRow {
+  requirePrinter(db, id);
+  if (typeof text !== "string" || !text.startsWith("*PPD-Adobe"))
+    throw new HttpError(400, "that is not a PPD file (it should start with *PPD-Adobe)");
+  const parsed = parsePpd(text);
+  if (parsed.options.filter(o => !o.installable).length === 0)
+    throw new HttpError(400, "the PPD has no user options");
+  db.prepare("UPDATE printers SET ppd = ? WHERE id = ?").run(text, id);
+  return requirePrinter(db, id);
+}
+
+export function clearPpd(db: Db, id: number): PrinterRow {
+  requirePrinter(db, id);
+  db.prepare("UPDATE printers SET ppd = NULL, print_mode = 'ipp' WHERE id = ?").run(id);
+  ppdCache.delete(id);
+  return requirePrinter(db, id);
+}
+
+export function setPrintMode(db: Db, id: number, mode: unknown): PrinterRow {
+  const printer = requirePrinter(db, id);
+  if (mode !== "ipp" && mode !== "postscript")
+    throw new HttpError(400, "mode must be \"ipp\" or \"postscript\"");
+  if (mode === "postscript" && !printer.ppd)
+    throw new HttpError(400, "upload a PPD before switching to PostScript mode");
+  db.prepare("UPDATE printers SET print_mode = ? WHERE id = ?").run(mode, id);
+  return requirePrinter(db, id);
 }
 
 export function targetFor(printer: PrinterRow): PrinterTarget {
@@ -235,6 +291,12 @@ export function summarise(caps: IppAttributes): PrinterSummary {
   };
 }
 
+function ppdSummary(ppd: ParsedPpd | null): PrinterDto["ppd"] {
+  if (!ppd)
+    return null;
+  return { modelName: ppd.modelName, nickName: ppd.nickName, optionCount: ppd.options.filter(o => !o.installable).length, hasJcl: ppd.jcl !== null };
+}
+
 export function toDto(db: Db, printer: PrinterRow): PrinterDto {
   const pending = db.prepare("SELECT COUNT(*) AS n FROM caps_changes WHERE printer_id = ? AND acknowledged_at IS NULL").get(printer.id) as { n: number };
   return {
@@ -250,5 +312,7 @@ export function toDto(db: Db, printer: PrinterRow): PrinterDto {
     overrideCount: Object.keys(overrideCaps(printer)).length,
     pendingChanges: pending.n,
     summary: summarise(capsFor(printer)),
+    printMode: printer.print_mode,
+    ppd: ppdSummary(parsedPpdFor(printer)),
   };
 }
