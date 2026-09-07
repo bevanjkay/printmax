@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.3.4",
   "description": "Self-hosted upload-and-print web app that talks IPP directly to network printers",
   "engines": {
     "node": ">=24"
