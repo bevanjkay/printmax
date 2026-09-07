@@ -1,0 +1,20 @@
+services:
+  printmax:
+    image: ${PRINTMAX_IMAGE:-ghcr.io/bevanjkay/printmax:latest}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-3000}
+      CAPS_REFRESH_HOURS: ${CAPS_REFRESH_HOURS:-24}
+      DISCOVERY_TIMEOUT_MS: ${DISCOVERY_TIMEOUT_MS:-3000}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+    volumes:
+      - data:/data
+    # DNS-SD discovery needs multicast, which the default bridge network blocks.
+    # To use "Scan" from inside Docker, replace `ports:` with host networking:
+    # network_mode: host
+
+volumes:
+  data:

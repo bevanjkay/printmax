@@ -1,0 +1,4 @@
+services:
+  printmax:
+    image: printmax:local
+    build: .

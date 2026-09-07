@@ -15,7 +15,6 @@
     "check": "tsc --noEmit",
     "dev": "tsx watch src/server/index.ts",
     "dev:client": "vite",
-    "batchoutput-presets": "tsx scripts/batchoutput-presets.ts",
     "dump-caps": "tsx scripts/dump-caps.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

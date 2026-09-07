@@ -13,21 +13,33 @@ a preset, print. Talks IPP directly to the printer, so there is no CUPS to run o
 - **No spooler.** Jobs retry with backoff when the printer is unreachable; rejections surface the
   printer's own IPP status and message.
 
-Status: milestones M1 to M3 of `print-server-plan.md` are built. **M0 (the spike against the
-Reside Toshiba) is still open** because that printer is only reachable on-site; development so far
-targets `ippeveprinter`.
+Status: milestones M1 to M3 of `print-server-plan.md` are built. M0 (the spike against the office
+Toshiba e-STUDIO) has its capabilities captured as a fixture and Validate-Job checked; a real print
+run is still to be done on-site. Development targets `ippeveprinter`.
 
 ## Run
+
+The standard install is Docker Compose with [docker-compose.yml](./docker-compose.yml), which
+pulls `ghcr.io/bevanjkay/printmax:latest` (built by CI from `main`; releases are tagged `vX.Y.Z`):
 
 ```sh
 docker compose up -d
 ```
 
+To build and run from source instead, add the development override:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
 Open <http://localhost:8080>. The first visit asks you to create the admin account. Then, under
 Printers, add a printer by IPP URI (usually `ipp://<host>/ipp/print`) or scan for one.
 
+Every variable has a default; set them in the environment or a `.env` file next to the compose file.
+
 | Variable | Default | Purpose |
 |---|---|---|
+| `PRINTMAX_IMAGE` | `ghcr.io/bevanjkay/printmax:latest` | Image the compose file runs |
 | `PORT` | `8080` | HTTP port |
 | `DATA_DIR` | `/data` in the container | SQLite database and uploads |
 | `RETENTION_DAYS` | `7` | Delete uploaded files this long after the job finishes |
@@ -36,14 +48,15 @@ Printers, add a printer by IPP URI (usually `ipp://<host>/ipp/print`) or scan fo
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
 
-The container runs as the unprivileged `node` user (uid 1000). The named volumes in `compose.yaml`
-inherit the right ownership; if you bind-mount a host directory instead, `chown 1000:1000` it first.
+The container runs as the unprivileged `node` user (uid 1000). The named volume in
+`docker-compose.yml` inherits the right ownership; if you bind-mount a host directory instead,
+`chown 1000:1000` it first.
 
 ### Network discovery
 
 "Scan" browses DNS-SD (`_ipp._tcp` / `_ipps._tcp`). Multicast does not cross the Docker bridge,
 so inside Docker it only works with `network_mode: host` (see the commented block in
-`compose.yaml`). Manual URI entry is the reliable path; `ippfind` on any machine on the printer's
+`docker-compose.yml`). Manual URI entry is the reliable path; `ippfind` on any machine on the printer's
 network prints the URI.
 
 ### Reverse proxy
@@ -80,16 +93,10 @@ pnpm dump-caps ipp://printer/ipp/print [username password] > fixtures/my-printer
 ## Preset files
 
 The Presets page exports a printer's presets as JSON and imports the same format; presets whose
-options the printer rejects are listed rather than failing the whole file. To convert presets from
-Zevrix BatchOutput PDF (which embed Toshiba e-STUDIO PPD features) into that format:
-
-```sh
-pnpm batchoutput-presets > presets.json   # reads ~/Library/Application Support/Zevrix/BatchOutput PDF/Presets
-```
-
-Only settings a printer takes over IPP survive: paper size, tray, paper type, duplex, colour,
-corner staples, orientation and copies. Folding, saddle stitch, booklet imposition and image-quality
-settings are listed per preset on stderr and in the imported preset's description.
+options the printer rejects are listed rather than failing the whole file. A separate converter,
+`batchoutput-export`, turns Zevrix BatchOutput PDF presets into these files, one per preset; it
+keeps what a printer takes over IPP (paper size, tray, paper type, duplex, colour, corner staples,
+orientation, copies) and records the rest in each preset's description.
 
 The preset editor's "Check with printer" button sends the options as an IPP Validate-Job, so the
 device itself confirms it would accept them without printing anything. The capability overrides
