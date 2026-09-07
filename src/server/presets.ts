@@ -3,7 +3,7 @@ import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
-import { capsFor, requirePrinter } from "./printers.js";
+import { profileFor, requirePrinter } from "./printers.js";
 import { validateJobOptions } from "./validation.js";
 
 export interface PresetRow {
@@ -70,7 +70,7 @@ function parseInput(db: Db, input: PresetInput, user: UserRow): { printerId: num
   if (typeof input.options !== "object" || input.options === null || Array.isArray(input.options))
     throw new HttpError(400, "options must be an object");
   const options = input.options as Record<string, unknown>;
-  const errors = validateJobOptions(options, capsFor(printer));
+  const errors = validateJobOptions(options, profileFor(printer));
   if (errors.length > 0)
     throw new HttpError(422, errors.join("; "));
   return {
@@ -164,7 +164,7 @@ export function importPresets(db: Db, printerId: number, items: unknown, user: U
 export function toPresetDto(db: Db, preset: PresetRow, user: UserRow): PresetDto {
   const options = JSON.parse(preset.options) as Record<string, unknown>;
   const printer = db.prepare("SELECT * FROM printers WHERE id = ?").get(preset.printer_id);
-  const problems = printer ? validateJobOptions(options, capsFor(printer as never)) : ["printer no longer exists"];
+  const problems = printer ? validateJobOptions(options, profileFor(printer as never)) : ["printer no longer exists"];
   return {
     id: preset.id,
     printerId: preset.printer_id,

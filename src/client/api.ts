@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, ProbeResult, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -42,6 +42,9 @@ export const api = {
   refreshPrinter: (id: number) => request<PrinterDto>(`/api/printers/${id}/refresh`, json("POST")),
   deletePrinter: (id: number) => request<void>(`/api/printers/${id}`, json("DELETE")),
   setDefaults: (id: number, defaults: Record<string, unknown>) => request<PrinterDto>(`/api/printers/${id}/defaults`, json("PUT", defaults)),
+  setPpd: (id: number, ppd: string) => request<PrinterDto>(`/api/printers/${id}/ppd`, json("PUT", { ppd })),
+  clearPpd: (id: number) => request<PrinterDto>(`/api/printers/${id}/ppd`, json("DELETE")),
+  setPrintMode: (id: number, mode: PrintMode) => request<PrinterDto>(`/api/printers/${id}/mode`, json("PUT", { mode })),
   setOverrides: (id: number, overrides: Record<string, { type: string; values: unknown[] }>) => request<PrinterDto>(`/api/printers/${id}/overrides`, json("PUT", overrides)),
   listChanges: (id: number) => request<CapsChangeDto[]>(`/api/printers/${id}/changes`),
   ackChange: (id: number, changeId: number) => request<void>(`/api/printers/${id}/changes/${changeId}/ack`, json("POST")),

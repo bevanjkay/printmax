@@ -195,6 +195,50 @@ describe("aPI", () => {
     });
   });
 
+  describe("postScript mode", () => {
+    const ppdText = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
+
+    it("takes a PPD, switches the form to its options, and validates presets against it", async () => {
+      expect((await app.inject(as(userCookie, { method: "PUT", url: `/api/printers/${printerId}/ppd`, payload: { ppd: ppdText } }))).statusCode).toBe(403);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/mode`, payload: { mode: "postscript" } }))).statusCode).toBe(400);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/ppd`, payload: { ppd: "not a ppd" } }))).statusCode).toBe(400);
+
+      try {
+        await postScriptRoundTrip();
+      }
+      finally {
+        await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
+      }
+    });
+
+    async function postScriptRoundTrip(): Promise<void> {
+      const withPpd = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/ppd`, payload: { ppd: ppdText } }));
+      expect(withPpd.statusCode, withPpd.body).toBe(200);
+      expect(withPpd.json()).toMatchObject({ printMode: "ipp", ppd: { nickName: "TOSHIBA ColorMFP", hasJcl: true } });
+      expect((await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>().map(f => f.name)).toContain("sides");
+
+      const on = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/mode`, payload: { mode: "postscript" } }));
+      expect(on.json().printMode).toBe("postscript");
+      const fields = (await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>();
+      expect(fields[0]?.name).toBe("copies");
+      expect(fields.map(f => f.name)).toContain("ppd:Stapling");
+      expect(fields.map(f => f.name)).not.toContain("sides");
+
+      const booklet = await app.inject(as(adminCookie, { method: "POST", url: "/api/presets", payload: { printerId, name: "Booklet", scope: "global", options: { "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 1 } } }));
+      expect(booklet.statusCode, booklet.body).toBe(201);
+      const bad = await app.inject(as(adminCookie, { method: "POST", url: "/api/presets", payload: { printerId, name: "Old style", scope: "global", options: { sides: "one-sided" } } }));
+      expect(bad.statusCode).toBe(422);
+      expect(bad.json().error).toMatch(/not used in PostScript mode/);
+      const listed = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
+      expect(listed.find(p => p.name === "Duplex draft")?.problems[0]).toMatch(/not used in PostScript mode/);
+      expect(listed.find(p => p.name === "Booklet")?.problems).toEqual([]);
+
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/presets/${booklet.json<PresetDto>().id}` }))).statusCode).toBe(204);
+      const off = await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
+      expect(off.json()).toMatchObject({ printMode: "ipp", ppd: null });
+    }
+  });
+
   describe("printer probe", () => {
     it("reports an unreachable printer rather than guessing", async () => {
       const res = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/probe`, payload: { options: { sides: "one-sided" } } }));

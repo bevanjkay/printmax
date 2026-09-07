@@ -81,6 +81,10 @@ const MIGRATIONS: string[] = [
   CREATE INDEX caps_changes_printer ON caps_changes(printer_id, acknowledged_at);
   CREATE INDEX jobs_user ON jobs(user_id);
   `,
+  `
+  ALTER TABLE printers ADD COLUMN ppd TEXT;
+  ALTER TABLE printers ADD COLUMN print_mode TEXT NOT NULL DEFAULT 'ipp';
+  `,
 ];
 
 export function openDb(file: string): Db {

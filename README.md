@@ -91,6 +91,23 @@ Capture a printer's attributes as a fixture:
 pnpm dump-caps ipp://printer/ipp/print [username password] > fixtures/my-printer.json
 ```
 
+## PostScript mode (folding, booklets and other driver-only finishing)
+
+Some finishing never appears in a printer's IPP attributes because the vendor implements it as
+private PostScript commands in its driver; on the Toshiba e-STUDIO that covers folding,
+saddle stitch and booklet imposition. printmax can send jobs the way that driver does. Under
+Printers, upload the device's PPD (on a Mac with the printer installed it is in `/etc/cups/ppd/`)
+and switch the printer to **PostScript via PPD**. From then on:
+
+- the print form and presets use the PPD's own options (`ppd:<Key>` in the option map) plus
+  copies, in place of the IPP attributes;
+- each job is a PDF converted with Ghostscript and wrapped in the PPD's PJL header with every
+  option's snippet in `*OrderDependency` order, exactly as CUPS emits it;
+- PDF is the only accepted upload while the mode is on.
+
+It is opt-in per printer and reversible; plain IPP remains the default. The proof for the
+Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/booklet-8-pages.pdf`).
+
 ## Preset files
 
 The Presets page exports a printer's presets as JSON and imports the same format; presets whose

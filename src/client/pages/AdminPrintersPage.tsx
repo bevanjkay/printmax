@@ -1,12 +1,12 @@
 import type { FormEvent } from "react";
 import type { CapsChangeDto, DiscoveredPrinter, FormField, PrinterDto } from "../../shared/types.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
 import { enumValue } from "../../shared/enums.js";
 import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
-import { IconChevron, IconPrinter, IconRefresh, IconSearch } from "../components/Icons.js";
+import { IconChevron, IconPrinter, IconRefresh, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel } from "../components/ui.js";
 import { formatDate, stateTone, useAsyncError } from "../util.js";
 
@@ -300,6 +300,82 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
   );
 }
 
+/** Opt-in PostScript mode: upload the vendor PPD, then send jobs the way its driver does. */
+function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { error, fail, clear } = useAsyncError();
+
+  async function run(action: () => Promise<unknown>) {
+    clear();
+    setBusy(true);
+    try {
+      await action();
+      onChanged();
+    }
+    catch (err) {
+      fail(err);
+    }
+    finally {
+      setBusy(false);
+    }
+  }
+
+  const postscript = printer.printMode === "postscript";
+  return (
+    <details className="disclosure" open={postscript}>
+      <summary>
+        <IconChevron className="icon chev" />
+        PostScript mode
+        {postscript ? <Badge tone="info">On</Badge> : <Badge plain>Off</Badge>}
+      </summary>
+      <div className="disclosure-body stack">
+        <p className="help">
+          Some finishing, such as folding and saddle-stitched booklets, only exists in the vendor's PostScript driver.
+          Upload the printer's PPD and printmax can send jobs the way that driver does; the print form then shows the PPD's options instead of the IPP ones. PDF only.
+        </p>
+        <div className="row between small">
+          <span>
+            {printer.ppd
+              ? (
+                  <>
+                    <b>{printer.ppd.nickName || printer.ppd.modelName}</b>
+                    <span className="muted">{` · ${printer.ppd.optionCount} options${printer.ppd.hasJcl ? " · PJL wrapper" : ""}`}</span>
+                  </>
+                )
+              : <span className="muted">No PPD uploaded. On a Mac with the printer installed it is in /etc/cups/ppd/.</span>}
+          </span>
+          <span className="row">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".ppd,text/plain"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file)
+                  void run(async () => api.setPpd(printer.id, await file.text()));
+              }}
+            />
+            <Button size="sm" icon={<IconUpload />} loading={busy} onClick={() => fileRef.current?.click()}>{printer.ppd ? "Replace PPD" : "Upload PPD"}</Button>
+            {printer.ppd && <ConfirmButton size="sm" label="Remove PPD" confirmLabel="Remove PPD and return to IPP?" disabled={busy} onConfirm={() => void run(() => api.clearPpd(printer.id))} />}
+          </span>
+        </div>
+        <div className="row between small">
+          <span>Send jobs as</span>
+          <div className="segmented" role="group" aria-label="Print mode">
+            <button type="button" className={postscript ? "" : "active"} disabled={busy} onClick={() => void run(() => api.setPrintMode(printer.id, "ipp"))}>IPP attributes</button>
+            <button type="button" className={postscript ? "active" : ""} disabled={busy || !printer.ppd} title={printer.ppd ? undefined : "Upload a PPD first"} onClick={() => void run(() => api.setPrintMode(printer.id, "postscript"))}>PostScript via PPD</button>
+          </div>
+        </div>
+        {postscript && <p className="xs muted">Presets made in IPP mode are flagged until they are re-saved with PPD options. Copies still travels as an IPP attribute.</p>}
+        {error && <Notice tone="error">{error}</Notice>}
+      </div>
+    </details>
+  );
+}
+
 const labels = (xs: string[]) => xs.map(keywordLabel).join(", ") || "—";
 
 const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested"];
@@ -454,7 +530,8 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
           <dt>Capabilities fetched</dt>
           <dd className="num">{printer.capsFetchedAt ? formatDate(printer.capsFetchedAt) : "never"}</dd>
         </dl>
-        <Defaults printer={printer} onChanged={onChanged} />
+        <PostScriptMode printer={printer} onChanged={onChanged} />
+        {printer.printMode !== "postscript" && <Defaults printer={printer} onChanged={onChanged} />}
         <Overrides printer={printer} onChanged={onChanged} />
         {error && <Notice tone="error">{error}</Notice>}
       </div>

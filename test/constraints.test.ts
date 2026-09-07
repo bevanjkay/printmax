@@ -87,10 +87,10 @@ describe("applyResolvers", () => {
 
 describe("validateJobOptions", () => {
   it("reports capability errors before constraint errors", () => {
-    expect(validateJobOptions({ sides: "sideways", media: "iso_dl_110x220mm" }, caps)).toEqual([
+    expect(validateJobOptions({ sides: "sideways", media: "iso_dl_110x220mm" }, { caps, ppd: null, mode: "ipp" })).toEqual([
       "\"sides\" = sideways is not supported; choose from one-sided, two-sided-long-edge, two-sided-short-edge",
     ]);
-    expect(validateJobOptions({ sides: "two-sided-long-edge", media: "iso_dl_110x220mm" }, caps)).toEqual([
+    expect(validateJobOptions({ sides: "two-sided-long-edge", media: "iso_dl_110x220mm" }, { caps, ppd: null, mode: "ipp" })).toEqual([
       "sides=two-sided-long-edge with media=iso_dl_110x220mm is not a valid combination on this printer; suggested fix: sides=one-sided",
     ]);
   });

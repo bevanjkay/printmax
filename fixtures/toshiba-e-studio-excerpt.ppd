@@ -1,0 +1,322 @@
+*PPD-Adobe: "4.3"
+*FormatVersion: "4.3"
+*FileVersion: "7.117.3.0"
+*LanguageEncoding: ISOLatin1
+*LanguageVersion: English
+*PCFileName: "TSES6D_1.PPD"
+*Manufacturer: "TOSHIBA"
+*Product: "(TOSHIBA e-STUDIO3515AC)"
+*PSVersion: "(3010) 1"
+*ModelName: "TOSHIBA ColorMFP"
+*NickName: "TOSHIBA ColorMFP"
+*ShortNickName: "TOSHIBA ColorMFP"
+*LanguageLevel: "3"
+*JCLBegin: "<1B>%-12345X@PJL JOB<0A>@PJL COMMENT DSSC PRINT CHARCODE=CP65001<0A>"
+*JCLToPSInterpreter: "@PJL ENTER LANGUAGE = POSTSCRIPT <0A>"
+*JCLEnd: ""
+*JobPatchFile 1: "
+  userdict /TSBshowpage /showpage load put
+  userdict /TSBsetpagedevice /setpagedevice load put
+"
+*End
+*ColorDevice: True
+*DefaultColorSpace: CMYK
+*TTRasterizer: Type42
+*DefaultResolution: 600dpi
+
+*PaperDimension A3/A3 (297 x 420mm): "842 1191"
+*PaperDimension A4/A4 (210 x 297mm): "595 842"
+*PaperDimension A5/A5 (148 x 210mm): "420 595"
+
+*OpenGroup: InstallableOptions/Options Installed
+*OpenUI *Finisher/Finisher: PickOne
+*DefaultFinisher: Saddle2+1
+*Finisher None/None: ""
+*Finisher Hanging1/Hanging Finisher (1 Tray): ""
+*Finisher Saddle2+1/Saddle Stitch Finisher (2 Trays + 1 Fixed Tray): ""
+*CloseUI: *Finisher
+
+*CloseGroup: InstallableOptions
+*OpenUI *PageSize: PickOne
+*OrderDependency: 20 AnySetup *PageSize
+*DefaultPageSize: A4
+
+*PageSize A3/A3 (297 x 420mm): "
+    << /DeferredMediaSelection true /PageSize [842 1191]  /ImagingBBox null >> setpagedevice"
+*End
+*PageSize A4/A4 (210 x 297mm): "
+    << /DeferredMediaSelection true /PageSize [595 842] /ImagingBBox null >> setpagedevice"
+*End
+*PageSize A5/A5 (148 x 210mm): "
+    << /DeferredMediaSelection true /PageSize [420 595] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [792 1224] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [612 1008] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [612 792] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [396 612] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [729 1008] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [612 936] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [612 612] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [865 1296] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [936 1368] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [612 972] /ImagingBBox null >> setpagedevice"
+*End
+    << /DeferredMediaSelection true /PageSize [216 360] /ImagingBBox null >> setpagedevice"
+*End
+
+*?PageSize: "
+   save
+   currentpagedevice /PageSize get aload pop
+   2 copy gt {exch} if 
+   (Unknown) 
+   35 dict
+   dup [865 1297] (A3-Wide) put
+   dup [865 1296] (Ledger-Wide) put
+   dup [936 1368] (13x19) put
+   dup [612 612] (8.5x8.5) put
+   dup [612 936] (LG13) put
+   dup [729 1008] (Computer) put
+   dup [595 935] (Folio) put
+   dup [396 612] (Statement) put
+   dup [612 792] (Letter) put
+   dup [612 1008] (Legal) put
+   dup [792 1224] (Ledger) put
+   dup [516 728] (B5) put
+   dup [728 1032] (B4) put
+   dup [284 420] (Postcard) put
+   dup [420 567] (DoublePostcardRotated) put
+   dup [297 420] (A6) put
+   dup [420 595] (A5) put
+   dup [595 842] (A4) put
+   dup [842 1191] (A3) put
+   dup [554 767] (16K) put
+   dup [767 1107] (8K) put
+   dup [279 639] (Env9) put
+   dup [297 684] (Env10) put
+   dup [279 540] (EnvMonarch) put
+   dup [312 624] (EnvDL) put
+   dup [340 666] (EnvChou3) put
+   dup [255 581] (EnvChou4) put
+   dup [298 666] (EnvYou4) put
+   dup [459 649] (EnvC5) put
+   dup [680 941] (EnvKaku2) put
+   dup [907 1276] (SRA3) put
+   dup [907 1304] (320 x 460mm) put
+   dup [612 972] (LG135) put
+   dup [216 360] (IndexCard) put
+   dup [522 756] (Executive) put
+
+{ exch aload pop 4 index sub abs 5 le exch 
+   5 index sub abs 5 le and 
+      {exch pop exit} {pop} ifelse
+   } bind forall
+   = flush pop pop
+   restore
+"
+*End
+*CloseUI: *PageSize
+
+*OpenUI *InputSlot: PickOne
+*OrderDependency: 35 AnySetup *InputSlot
+*DefaultInputSlot: Auto
+
+*InputSlot Auto/Auto (Default): "
+    << /DeferredMediaSelection true /ManualFeed false /MediaPosition 9 >> setpagedevice"
+*End
+*InputSlot Drawer1/Drawer 1: "
+    << /DeferredMediaSelection true /ManualFeed false /MediaPosition 0 >> setpagedevice"
+*End
+*InputSlot SheetFeedBypass/Bypass Tray:"
+    << /DeferredMediaSelection true /ManualFeed true  /MediaPosition 3 >> setpagedevice"
+*End
+*CloseUI: *InputSlot
+
+*OpenUI *MediaType/Paper Type: PickOne
+*OrderDependency: 35 AnySetup *MediaType
+*DefaultMediaType: None
+
+*MediaType None/Printer's Default: ""
+*MediaType Plain/Plain: "
+    << /DeferredMediaSelection true /MediaType (Plain) >> setpagedevice
+      userdict /TSBMediaType 0 put
+    <</TSBPrivate (DSSC PRINT MEDIATYPE=PLAIN) >> setpagedevice"
+*End
+*MediaType Thick1/Thick 1: "
+    << /DeferredMediaSelection true /MediaType (Thick 1) >> setpagedevice
+      userdict /TSBMediaType 5 put
+    <</TSBPrivate (DSSC PRINT MEDIATYPE=THICK1) >> setpagedevice"
+*End
+*MediaType Thick3/Thick 3: "
+    << /DeferredMediaSelection true /MediaType (Thick 3) >> setpagedevice
+      userdict /TSBMediaType 9 put
+    <</TSBPrivate (DSSC PRINT MEDIATYPE=THICK3) >> setpagedevice"
+*End
+*CloseUI: *MediaType
+
+*OpenUI *Duplex/Duplex:  PickOne
+*OrderDependency: 34 AnySetup *Duplex
+*DefaultDuplex: None
+
+*Duplex None/1-Sided: ""
+*End
+
+*Duplex DuplexNoTumble/2-Sided, No Tumble(Long-Edge Binding): "
+    << /Duplex true /Tumble false >> setpagedevice"
+*End
+
+*Duplex DuplexTumble/2-Sided, Tumble(Short-Edge Binding): "
+    << /Duplex true /Tumble true >> setpagedevice"
+*End
+
+*?Duplex: "
+	   save
+	   currentpagedevice /Duplex get
+	   {currentpagedevice /Tumble get {(DuplexTumble)}{(DuplexNoTumble)}ifelse}
+	   {(None)}ifelse
+	   = flush
+	   restore"
+*End 
+*CloseUI: *Duplex
+
+*OpenUI *Collate/Collate: Boolean
+*OrderDependency: 60 AnySetup *Collate
+*DefaultCollate: True
+*Collate True: "
+	<</TSBPrivate (DSSC PRINT COLLATE=1)>> setpagedevice"
+*End
+*Collate False: "
+	<</TSBPrivate (DSSC PRINT COLLATE=0)>> setpagedevice"
+*End
+*CloseUI: *Collate
+
+*OpenGroup: FinishingOptions/Finishing
+*OpenUI *Stapling/Stapling:  PickOne
+*OrderDependency: 39 AnySetup *Stapling
+*DefaultStapling: None
+*Stapling None/Off: "<</TSBPrivate (DSSC PRINT STAPLING=0) >> setpagedevice"
+*Stapling UL/Upper Left (Portrait) / Upper Right (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=769) >> setpagedevice"
+*Stapling ML/Middle Left (Portrait) / Middle Top (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=2) >> setpagedevice"
+*Stapling LL/Lower Left (Portrait) / Upper Left (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=33027) >> setpagedevice"
+*Stapling UR/Upper Right (Portrait) / Lower Right (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=387) >> setpagedevice"
+*Stapling MR/Middle Right (Portrait) / Middle Bottom (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=130) >> setpagedevice"
+*Stapling LR/Lower Right (Portrait) / Lower Left (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=33665) >> setpagedevice"
+*Stapling MT/Middle Top (Portrait) / Middle Right (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=512) >> setpagedevice"
+*Stapling MB/Middle Bottom (Portrait) / Middle Left (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=33280) >> setpagedevice"
+*Stapling SS/Saddle Stitch (Portrait) / Saddle Stitch (Landscape): "<</TSBPrivate (DSSC PRINT STAPLING=1028) >> setpagedevice"
+*CloseUI: *Stapling
+
+*OpenUI *Folding/Folding: Boolean
+*OrderDependency: 51 AnySetup *Folding
+*DefaultFolding: False
+*Folding False/Off: ""
+*Folding True/On: "<</TSBPrivate (DSSC PRINT FOLD=CENTER) >> setpagedevice"
+*CloseUI: *Folding
+
+*CloseGroup: FinishingOptions
+*OpenGroup: BookletModeOptions/Booklet
+*OpenUI *BookletPaperSize/Booklet Paper Size:  PickOne
+*OrderDependency: 30 AnySetup *BookletPaperSize
+*DefaultBookletPaperSize: None
+*BookletPaperSize None/None (Off): "<</Duplex false >> setpagedevice"
+*BookletPaperSize A4/A4: "
+	<</TSBPrivate (DSSC PRINT BOOKLET=A4) /Duplex true /Tumble true >> setpagedevice"
+*End
+*BookletPaperSize A3/A3: " 
+	<</TSBPrivate (DSSC PRINT BOOKLET=A3) /Duplex true /Tumble true >> setpagedevice"
+*End
+	<</TSBPrivate (DSSC PRINT BOOKLET=13) /Duplex true /Tumble true >> setpagedevice"
+*End
+	<</TSBPrivate (DSSC PRINT BOOKLET=SQ) /Duplex true /Tumble true >> setpagedevice"
+*End
+*CloseUI: *BookletPaperSize 
+
+*OpenUI *BookletPageLayout/Left to Right Page Layout: Boolean
+*OrderDependency: 31 AnySetup *BookletPageLayout
+*DefaultBookletPageLayout: True
+*BookletPageLayout False/Right to Left: "
+	<</TSBPrivate (DSSC PRINT LEFTTORIGHT=0) >> setpagedevice"
+*End
+*BookletPageLayout True/Left to Right: "
+	<</TSBPrivate (DSSC PRINT LEFTTORIGHT=1) >> setpagedevice"
+*End
+*CloseUI: *BookletPageLayout
+
+*CloseGroup: BookletModeOptions
+*OpenGroup: ColorSettings1/Color Settings 1
+*OpenUI *ColorType/Color Type: PickOne
+*OrderDependency: 50 AnySetup *ColorType
+*DefaultColorType: Color
+
+*ColorType Auto/Auto: "
+<</TSBPrivate (DSSC PRINT RENDERMODE=AUTO) >> setpagedevice "
+*End
+
+*ColorType Color/Color: "
+<</TSBPrivate (DSSC PRINT RENDERMODE=COLOR) >> setpagedevice "
+*End
+
+*ColorType Mono/Mono: "
+<</ProcessColorModel /DeviceGray >> setpagedevice	
+<</TSBPrivate (DSSC PRINT RENDERMODE=GRAYSCALE) >> setpagedevice "
+*End
+
+
+
+
+
+
+
+
+*CloseUI: *ColorType
+
+*OpenUI *Resolution/Resolution: PickOne
+*OrderDependency: 42 AnySetup *Resolution
+*DefaultResolution: 600dpi
+*Resolution 600dpi/600 dpi: "
+<</TSBPrivate (DSSC PRINT XYRESOLUTION=600x600) >> setpagedevice 
+userdict /XYResolution 600 put"
+*End
+*Resolution 1200dpi/1200 dpi: "
+<</TSBPrivate (DSSC PRINT XYRESOLUTION=1200x1200) >> setpagedevice 
+userdict /XYResolution 1200 put"
+*End
+*Resolution 600x1200dpi/600 x 1200 dpi: "
+<</TSBPrivate (DSSC PRINT XYRESOLUTION=600x1200) >> setpagedevice 
+userdict /XYResolution 1200 put"
+*End
+*CloseUI: *Resolution
+
+*CloseGroup: ColorSettings1
+
+*UIConstraints: *Finisher None *Stapling
+*UIConstraints: *Finisher None *Folding
+*UIConstraints: *Finisher Hanging1 *Stapling SS
+*UIConstraints: *Finisher Hanging1 *Folding
+*UIConstraints: *Folding *Stapling UL
+*UIConstraints: *Folding *Stapling UR
+*UIConstraints: *Folding *Stapling ML
+*UIConstraints: *Folding *Stapling MR
+*UIConstraints: *Folding *Stapling MT
+*UIConstraints: *Folding *Stapling MB
+*UIConstraints: *Folding *Stapling LL
+*UIConstraints: *Folding *Stapling LR
+*UIConstraints: *PageSize A5 *Stapling
+*UIConstraints: *PageSize A5 *Folding
+*UIConstraints: *BookletPaperSize *Duplex None
+*UIConstraints: *BookletPaperSize *Stapling UL
+*UIConstraints: *BookletPaperSize *Stapling ML
+*UIConstraints: *BookletPaperSize *Stapling LL
+*UIConstraints: *BookletPaperSize *Stapling UR
+*UIConstraints: *BookletPaperSize *Stapling MR
+*UIConstraints: *BookletPaperSize *Stapling LR
+*UIConstraints: *BookletPaperSize *Stapling MT
+*UIConstraints: *BookletPaperSize *Stapling MB

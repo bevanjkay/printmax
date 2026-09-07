@@ -31,6 +31,15 @@ export interface PrinterSummary {
   defaults: Record<string, string | number>;
 }
 
+export type PrintMode = "ipp" | "postscript";
+
+export interface PpdSummary {
+  modelName: string;
+  nickName: string;
+  optionCount: number;
+  hasJcl: boolean;
+}
+
 export interface PrinterDto {
   id: number;
   name: string;
@@ -44,6 +53,9 @@ export interface PrinterDto {
   overrideCount: number;
   pendingChanges: number;
   summary: PrinterSummary;
+  /** "postscript" sends jobs as the PPD's PJL-wrapped PostScript; needs a PPD. */
+  printMode: PrintMode;
+  ppd: PpdSummary | null;
 }
 
 export interface FormChoice {

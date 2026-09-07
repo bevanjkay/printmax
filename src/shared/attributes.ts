@@ -115,3 +115,12 @@ export function keywordLabel(value: string | number): string {
 
 /** The few options ordinary users actually decide, shown up front; everything else folds under "More options". */
 export const PRIMARY_ATTRIBUTES = ["copies", "sides", "print-color-mode", "media", "print-quality", "finishings"];
+
+/** Option-map keys for PPD choices on printers in PostScript mode: `ppd:<PPD key>`. */
+export const PPD_PREFIX = "ppd:";
+
+const PRIMARY_PPD_OPTIONS = ["PageSize", "Duplex", "InputSlot", "MediaType", "ColorType", "ColorModel", "Stapling", "Folding", "BookletPaperSize"];
+
+export function isPrimaryOption(name: string): boolean {
+  return name.startsWith(PPD_PREFIX) ? PRIMARY_PPD_OPTIONS.includes(name.slice(PPD_PREFIX.length)) : PRIMARY_ATTRIBUTES.includes(name);
+}

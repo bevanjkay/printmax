@@ -4,9 +4,9 @@ import type { Db } from "../db.js";
 import { acknowledgeCapsChange, listCapsChanges, toCapsChangeDto } from "../capsdiff.js";
 import { discoverPrinters } from "../discovery.js";
 import { HttpError, notFound } from "../errors.js";
-import { buildForm } from "../form.js";
+import { formFor } from "../form.js";
 import { applyResolvers } from "../ipp/constraints.js";
-import { addPrinter, capsFor, deletePrinter, discoveredCaps, listPrinters, overrideCaps, refreshPrinter, requirePrinter, setDefaults, setOverrides, toDto } from "../printers.js";
+import { addPrinter, capsFor, clearPpd, deletePrinter, discoveredCaps, listPrinters, overrideCaps, profileFor, refreshPrinter, requirePrinter, setDefaults, setOverrides, setPpd, setPrintMode, toDto } from "../printers.js";
 import { probeOptions } from "../probe.js";
 import { validateJobOptions } from "../validation.js";
 import { idParam } from "./params.js";
@@ -35,7 +35,7 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
   });
 
   /** The generated option editor: fields, choices and defaults from the printer's own attributes. */
-  app.get("/api/printers/:id/form", async req => buildForm(capsFor(requirePrinter(db, idParam(req.params)))));
+  app.get("/api/printers/:id/form", async req => formFor(profileFor(requirePrinter(db, idParam(req.params)))));
 
   app.post("/api/printers/:id/probe", async (req): Promise<ProbeResult> => {
     const printer = requirePrinter(db, idParam(req.params));
@@ -52,7 +52,7 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
       throw new HttpError(400, "options must be an object");
     const options = body.options as Record<string, unknown>;
     const caps = capsFor(printer);
-    const errors = validateJobOptions(options, caps);
+    const errors = validateJobOptions(options, profileFor(printer));
     let resolved = options;
     if (errors.length > 0) {
       try {
@@ -109,6 +109,19 @@ export function adminPrinterRoutes(app: FastifyInstance, db: Db, opts: { discove
     if (!acknowledgeCapsChange(db, id, idParam(req.params, "changeId")))
       throw notFound("change");
     return reply.code(204).send();
+  });
+
+  /** The printer's PPD, for PostScript mode. Body: { "ppd": "<file contents>" }. */
+  app.put("/api/printers/:id/ppd", { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+    const body = (req.body ?? {}) as { ppd?: unknown };
+    return toDto(db, setPpd(db, idParam(req.params), body.ppd));
+  });
+
+  app.delete("/api/printers/:id/ppd", async req => toDto(db, clearPpd(db, idParam(req.params))));
+
+  app.put("/api/printers/:id/mode", async (req) => {
+    const body = (req.body ?? {}) as { mode?: unknown };
+    return toDto(db, setPrintMode(db, idParam(req.params), body.mode));
   });
 
   app.delete("/api/printers/:id", async (req, reply) => {

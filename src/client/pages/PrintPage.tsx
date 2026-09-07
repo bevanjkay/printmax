@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import type { FormField, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useEffect, useState } from "react";
-import { PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
+import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { IconChevron } from "../components/Icons.js";
 import { JobsTable } from "../components/JobsTable.js";
@@ -98,12 +98,13 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
   const stopped = printer.summary.state === "stopped";
   const all = fields ?? [];
   const copiesField = all.filter(f => f.name === "copies");
-  const quick = all.filter(f => PRIMARY_ATTRIBUTES.includes(f.name) && f.name !== "copies");
-  const more = all.filter(f => !PRIMARY_ATTRIBUTES.includes(f.name));
+  const primaryNames = all.filter(f => isPrimaryOption(f.name)).map(f => f.name);
+  const quick = all.filter(f => isPrimaryOption(f.name) && f.name !== "copies");
+  const more = all.filter(f => !isPrimaryOption(f.name));
   const adjustable = all.filter(f => f.name !== "copies");
   const hasPresets = presets.length > 0;
   const preset = presets.find(p => p.id === presetId) ?? null;
-  const summary = fields ? summariseOptions(fields, options, PRIMARY_ATTRIBUTES) : "";
+  const summary = fields ? summariseOptions(fields, options, primaryNames) : "";
 
   return (
     <form onSubmit={submit}>
@@ -139,7 +140,7 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
                         <label key={p.id} className={`preset-card${presetId === p.id ? " active" : ""}${p.problems.length > 0 ? " unavailable" : ""}`}>
                           <input type="radio" name="preset" value={p.id} checked={presetId === p.id} disabled={p.problems.length > 0} onChange={() => choosePreset(p.id)} />
                           <strong>{p.name}</strong>
-                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (summariseOptions(fields, p.options, PRIMARY_ATTRIBUTES) || "Printer defaults")}</span>
+                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (summariseOptions(fields, p.options, primaryNames) || "Printer defaults")}</span>
                           {p.problems.length === 0 && p.description && <span className="note">{p.description}</span>}
                         </label>
                       ))}
