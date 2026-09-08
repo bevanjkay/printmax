@@ -111,6 +111,7 @@ a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.1
 .xs { font-size: var(--fs-xs); }
 .num { font-variant-numeric: tabular-nums; }
 .danger-text { color: var(--danger); }
+.warning-text { color: var(--warning); }
 .success-text { color: var(--success); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .icon { width: 16px; height: 16px; flex: none; }

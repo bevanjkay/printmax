@@ -8,7 +8,7 @@ import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconPrinter, IconRefresh, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel } from "../components/ui.js";
-import { formatDate, stateTone, useAsyncError } from "../util.js";
+import { describeReason, formatDate, stateTone, useAsyncError } from "../util.js";
 
 type Caps = Record<string, { type: string; values: unknown[] }>;
 
@@ -508,7 +508,7 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
           <code>{printer.uri}</code>
           {printer.hasCredentials ? " · signs in" : ""}
         </div>
-        {s.stateReasons.length > 0 && <Notice tone="warning">{s.stateReasons.join(", ")}</Notice>}
+        {s.stateReasons.length > 0 && <Notice tone="warning">{s.stateReasons.map(r => describeReason(r).text).join(", ")}</Notice>}
         <Changes printer={printer} onChanged={onChanged} />
         <dl className="kv">
           <dt>Formats</dt>
