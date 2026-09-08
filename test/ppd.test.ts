@@ -92,7 +92,9 @@ describe("pPD options as a form and in validation", () => {
     expect(names).toContain("ppd:Stapling");
     expect(names).toContain("ppd:BookletPaperSize");
     expect(names).not.toContain("ppd:Finisher");
-    expect(fields.find(f => f.name === "ppd:Stapling")).toMatchObject({ label: "Stapling", default: "None", help: "Finishing" });
+    expect(fields.find(f => f.name === "ppd:Stapling")).toMatchObject({ label: "Stapling", default: "None", group: "Finishing" });
+    // The driver pages "Color Settings" across numbered groups; the form shows them as one section.
+    expect(fields.find(f => f.name === "ppd:ColorType")?.group).toBe("Color Settings");
     expect(fields.find(f => f.name === "ppd:PageSize")?.label).toBe("Paper size");
     expect(fields.find(f => f.name === "ppd:Stapling")?.choices?.find(c => c.value === "SS")?.label).toBe("Saddle Stitch");
     expect(fields.find(f => f.name === "ppd:PageSize")?.choices?.find(c => c.value === "A5")?.label).toBe("A5");

@@ -68,6 +68,8 @@ export interface FormField {
   label: string;
   widget: Widget;
   help?: string;
+  /** The section this belongs in, from the driver's own grouping. Ungrouped fields lead the form. */
+  group?: string;
   choices?: FormChoice[];
   default?: string | number | Array<string | number>;
   min?: number;
