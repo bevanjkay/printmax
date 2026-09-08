@@ -142,7 +142,7 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                       job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null,
                       ...job.stateReasons,
                       job.stateMessage,
-                      job.state === "retrying" && job.nextAttemptAt ? `retry ${job.attempts}/5 at ${formatTime(job.nextAttemptAt)}` : null,
+                      job.state === "retrying" && job.nextAttemptAt ? `retrying at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
                     ].filter(Boolean).join(" · ");
                     return (
                       <tr key={job.id} className={isNew ? "new" : undefined}>

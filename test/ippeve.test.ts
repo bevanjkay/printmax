@@ -1,7 +1,6 @@
 import type { InjectOptions } from "fastify";
 import type { PrinterDto } from "../src/shared/types.js";
 import type { VirtualPrinter } from "./helpers/ippeve.js";
-import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +11,7 @@ import { openDb } from "../src/server/db.js";
 import { getJob, startJobWorker } from "../src/server/jobs.js";
 import { ghostscriptAvailable } from "../src/server/ppd/ghostscript.js";
 import { ippeveprinterAvailable, startVirtualPrinter } from "./helpers/ippeve.js";
+import { multipart } from "./helpers/multipart.js";
 
 const MINIMAL_PDF = [
   "%PDF-1.4",
@@ -24,16 +24,6 @@ const MINIMAL_PDF = [
 ].join("\n");
 
 const FINISHED = ["completed", "aborted", "canceled", "failed"];
-
-function multipart(fields: Record<string, string>, file: { name: string; content: string }): { headers: Record<string, string>; payload: Buffer } {
-  const boundary = "----printmax";
-  const parts = Object.entries(fields).map(([k, v]) => `--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`);
-  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.name}"\r\n\r\n${file.content}\r\n--${boundary}--\r\n`);
-  return {
-    headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
-    payload: Buffer.from(parts.join("")),
-  };
-}
 
 const available = await ippeveprinterAvailable();
 
@@ -194,6 +184,40 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     const printerId = await firstPrinterId();
     const res = await app.inject(asAdmin({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId) }, { name: "x.docx", content: "PKnope" }) }));
     expect(res.statusCode).toBe(415);
+  });
+
+  it("waits and retries when the printer says it is busy with another job", async () => {
+    const printerId = await firstPrinterId();
+    const ids: number[] = [];
+    for (const name of ["first.pdf", "second.pdf"]) {
+      const res = await app.inject(asAdmin({ method: "POST", url: "/api/jobs", ...multipart({ printerId: String(printerId) }, { name, content: MINIMAL_PDF }) }));
+      expect(res.statusCode, res.body).toBe(201);
+      ids.push(res.json<{ id: number }>().id);
+    }
+    const worker = startJobWorker(db, { intervalMs: 60_000 });
+    try {
+      await worker.tick();
+      const states = ids.map(id => getJob(db, id)!);
+      const busy = states.find(j => j.state === "retrying");
+      expect(busy, states.map(j => `${j.filename}: ${j.state} ${j.error ?? ""}`).join(" | ")).toBeDefined();
+      expect(busy!.error).toMatch(/server-error-busy/);
+      expect(busy!.attempts).toBe(1);
+
+      // Real cadence: the busy job retries every few seconds until the first has printed.
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline && !ids.every(id => FINISHED.includes(getJob(db, id)!.state))) {
+        await worker.tick();
+        await new Promise(r => setTimeout(r, 500));
+      }
+      for (const id of ids) {
+        const row = getJob(db, id)!;
+        expect(row.state, `${row.filename}: ${row.error ?? ""}`).toBe("completed");
+      }
+      expect(getJob(db, busy!.id)!.attempts).toBeGreaterThan(1);
+    }
+    finally {
+      worker.stop();
+    }
   });
 
   it("retries with backoff when the printer is unreachable, then fails", async () => {
