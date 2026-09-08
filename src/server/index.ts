@@ -6,6 +6,7 @@ import { countUsers, purgeExpiredSessions } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { startJobWorker, sweepExpiredFiles } from "./jobs.js";
+import { sweepAbandonedUploads } from "./routes/upload.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -51,7 +52,8 @@ async function main(): Promise<void> {
   async function sweep(): Promise<void> {
     try {
       purgeExpiredSessions(db);
-      const removed = await sweepExpiredFiles(db, config.retentionDays);
+      const removed = await sweepExpiredFiles(db, config.retentionDays)
+        + await sweepAbandonedUploads([config.uploadDir, config.storedDir]);
       if (removed > 0)
         app.log.info({ removed }, "removed expired uploads");
     }

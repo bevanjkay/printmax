@@ -18,15 +18,15 @@ export interface Config {
   /** Required by the first-run setup page; generated and logged at startup when unset. */
   setupToken: string | null;
   /** Fastify's trustProxy: true behind a reverse proxy, false when clients reach the app directly, or a CIDR list. */
-  trustProxy: boolean | string;
+  trustProxy: boolean | string | string[];
 }
 
-function trustProxyFrom(raw: string | undefined): boolean | string {
-  if (raw === undefined || raw === "" || raw === "true")
+function trustProxyFrom(raw: string | undefined): boolean | string | string[] {
+  if (raw === "true")
     return true;
-  if (raw === "false")
+  if (raw === undefined || raw === "" || raw === "false")
     return false;
-  return raw;
+  return raw.includes(",") ? raw.split(",").map(value => value.trim()).filter(Boolean) : raw;
 }
 
 function int(name: string, fallback: number): number {

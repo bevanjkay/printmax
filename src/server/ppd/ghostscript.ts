@@ -1,8 +1,6 @@
 /** PDF to DSC PostScript through Ghostscript's ps2write device. */
 import type { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -11,15 +9,19 @@ const run = promisify(execFile);
 let available: Promise<boolean> | undefined;
 
 export function ghostscriptAvailable(): Promise<boolean> {
-  available ??= run("gs", ["--version"]).then(() => true, () => false);
+  available ??= run("gs", ["--version"], { timeout: 5000, killSignal: "SIGKILL" }).then(() => true, () => false);
   return available;
 }
 
 export interface ConvertOptions {
+  /** Shrink each page uniformly and centre it inside these margins (points). */
+  margins?: { left: number; bottom: number; right: number; top: number };
+  signal?: AbortSignal;
+  /** Upper bounds for conversion time and generated PostScript, independent of upload size. */
+  timeoutMs?: number;
+  maxOutputBytes?: number;
   /** Force this paper size (points) and scale pages to fit it, as a driver's "fit to paper" does. */
   paper?: { width: number; height: number };
-  /** Shrink each page uniformly and centre it inside these margins (points), as a driver keeps to the printable area. */
-  margins?: { left: number; bottom: number; right: number; top: number };
 }
 
 /**
@@ -40,26 +42,33 @@ function fitInsideMargins(m: NonNullable<ConvertOptions["margins"]>): string {
 }
 
 export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}): Promise<Buffer> {
-  const dir = await mkdtemp(path.join(tmpdir(), "printmax-ps-"));
-  const out = path.join(dir, "out.ps");
-  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
+  const file = path.resolve(pdfPath);
+  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dPDFSTOPONERROR", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
   if (opts.paper)
     args.push(`-dDEVICEWIDTHPOINTS=${Math.round(opts.paper.width)}`, `-dDEVICEHEIGHTPOINTS=${Math.round(opts.paper.height)}`, "-dFIXEDMEDIA", "-dPDFFitPage");
-  args.push(`-sOutputFile=${out}`);
-  if (opts.margins)
-    args.push("-c", fitInsideMargins(opts.margins), "-f");
-  args.push(pdfPath);
+  // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.
+  // Pass the path as a string parameter rather than interpolating it into PostScript code.
+  args.push("-sOutputFile=%stdout", "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${opts.margins ? fitInsideMargins(opts.margins) : ""} PDFFile (r) file runpdf`);
   try {
-    await run("gs", args, { maxBuffer: 16 * 1024 * 1024 });
-    return await readFile(out);
+    const { stdout } = await run("gs", args, {
+      encoding: "buffer",
+      timeout: opts.timeoutMs ?? 60_000,
+      maxBuffer: opts.maxOutputBytes ?? 64 * 1024 * 1024,
+      killSignal: "SIGKILL",
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    return stdout;
   }
   catch (err) {
-    const e = err as NodeJS.ErrnoException & { stderr?: string };
+    const e = err as NodeJS.ErrnoException & { stderr?: Buffer; signal?: string };
     if (e.code === "ENOENT")
       throw new Error("Ghostscript (gs) is not installed on the server; PostScript mode needs it");
-    throw new Error(`Ghostscript failed: ${(e.stderr ?? e.message).trim().split("\n").slice(-3).join(" ")}`);
-  }
-  finally {
-    await rm(dir, { recursive: true, force: true });
+    if (e.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
+      throw new Error("Ghostscript failed: conversion exceeded the output size limit");
+    if (opts.signal?.aborted)
+      throw new Error("Ghostscript failed: conversion canceled");
+    if (e.signal === "SIGKILL")
+      throw new Error("Ghostscript failed: conversion timed out");
+    throw new Error(`Ghostscript failed: ${String(e.stderr || e.message).trim().split("\n").slice(-3).join(" ")}`);
   }
 }

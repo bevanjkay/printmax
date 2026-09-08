@@ -28,14 +28,14 @@ export interface AppOptions {
   logger?: boolean | FastifyBaseLogger;
   /** When set, the first-run setup page must present this token. */
   setupToken?: string | null;
-  /** Default true: the usual deployment sits behind a reverse proxy that sets X-Forwarded-*. */
-  trustProxy?: boolean | string;
+  /** Default false. Set to the addresses/CIDRs of trusted reverse proxies. */
+  trustProxy?: boolean | string | string[];
   /** Attempts allowed per client IP per minute on sign-in and setup. */
   loginAttemptsPerMinute?: number;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? true });
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? false });
   const { db } = opts;
 
   // The app loads nothing from outside itself, so the policy can be strict. Inline styles are

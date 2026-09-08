@@ -500,7 +500,7 @@ describe("hardening", () => {
 
   it("only believes X-Forwarded-Proto when told to trust the proxy", async () => {
     const payload = { name: "Bevan", email: "admin@example.org", password: "correct horse" };
-    const trusting = await fresh();
+    const trusting = await fresh({ trustProxy: true });
     const direct = await fresh({ trustProxy: false });
     try {
       const behindProxy = await trusting.app.inject({ method: "POST", url: "/api/auth/setup", payload, headers: { "x-forwarded-proto": "https" } });

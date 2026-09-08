@@ -89,8 +89,7 @@ function send(url: URL, body: Buffer, target: PrinterTarget): Promise<Buffer> {
       method: "POST",
       headers,
       timeout: target.timeoutMs ?? 30_000,
-      // Printers almost universally present self-signed certificates.
-      ...(isTls ? { rejectUnauthorized: false } : {}),
+      // Use Node's trust store, including NODE_EXTRA_CA_CERTS for private printer CAs.
     }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
