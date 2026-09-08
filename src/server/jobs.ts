@@ -7,6 +7,7 @@ import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
 import { copyFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { FIT_TO_MARGINS } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError } from "./ipp/client.js";
@@ -15,7 +16,7 @@ import { TERMINAL_JOB_STATES } from "./ipp/constants.js";
 import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/operations.js";
 import { buildJobAttributes } from "./ipp/options.js";
 import { assemblePostScript } from "./ppd/assemble.js";
-import { ppdChoices } from "./ppd/form.js";
+import { marginsFor, ppdChoices } from "./ppd/form.js";
 import { pdfToPostScript } from "./ppd/ghostscript.js";
 import { canUsePreset, getPreset } from "./presets.js";
 import { getPrinter, profileFor, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
@@ -224,7 +225,9 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
 async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string) {
   const chosen = ppdChoices(options);
   const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
-  const document = await pdfToPostScript(job.file_path!, paper ? { paper } : {});
+  const keepMargins = options[FIT_TO_MARGINS] === true || options[FIT_TO_MARGINS] === "true";
+  const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
+  const document = await pdfToPostScript(job.file_path!, { ...(paper ? { paper } : {}), ...(margins ? { margins } : {}) });
   const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document });
   // Named PostScript where the printer lists it (auto-sensing printers cannot sniff past the PJL header); raw otherwise.
   const formats = attrValues<string>(caps, "document-format-supported");

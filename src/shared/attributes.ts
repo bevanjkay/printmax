@@ -121,6 +121,11 @@ export const PPD_PREFIX = "ppd:";
 
 const PRIMARY_PPD_OPTIONS = ["PageSize", "Duplex", "InputSlot", "MediaType", "ColorType", "ColorModel", "Stapling", "Folding", "BookletPaperSize"];
 
+/** printmax's own PostScript-mode option: shrink pages into the printer's printable area rather than print edge to edge. */
+export const FIT_TO_MARGINS = "fit-to-margins";
+
 export function isPrimaryOption(name: string): boolean {
+  if (name === FIT_TO_MARGINS)
+    return true;
   return name.startsWith(PPD_PREFIX) ? PRIMARY_PPD_OPTIONS.includes(name.slice(PPD_PREFIX.length)) : PRIMARY_ATTRIBUTES.includes(name);
 }

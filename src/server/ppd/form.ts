@@ -50,6 +50,17 @@ export function ppdFields(ppd: ParsedPpd): FormField[] {
     }));
 }
 
+export interface Margins { left: number; bottom: number; right: number; top: number }
+
+/** The printer's unprintable strip for a size: from its imageable area, else the hardware margins. */
+export function marginsFor(ppd: ParsedPpd, pageSize: string | undefined): Margins | null {
+  const box = pageSize ? ppd.imageableAreas[pageSize] : undefined;
+  const paper = pageSize ? ppd.paperDimensions[pageSize] : undefined;
+  if (box && paper)
+    return { left: box.llx, bottom: box.lly, right: paper.width - box.urx, top: paper.height - box.ury };
+  return ppd.hwMargins;
+}
+
 /** The `ppd:` entries of an option map as PPD key to choice value. */
 export function ppdChoices(options: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
