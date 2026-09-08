@@ -153,7 +153,8 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
     }
   };
 
-  const grouped = sections(fields);
+  // The quick row is a handful of decisive options and stays flat; sections are for the long lists.
+  const grouped = friendly ? new Map<string, FormField[]>() : sections(fields);
   if (grouped.size === 0)
     return <div className="form-grid">{fields.map(control)}</div>;
 
@@ -169,7 +170,10 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
             <details
               key={name}
               open={toggled[name] ?? chosen > 0}
-              onToggle={e => setToggled(t => ({ ...t, [name]: e.currentTarget.open }))}
+              onToggle={(e) => {
+                const open = e.currentTarget.open;
+                setToggled(t => ({ ...t, [name]: open }));
+              }}
             >
               <summary>
                 <IconChevron className="icon chev" />

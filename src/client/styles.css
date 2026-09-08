@@ -478,3 +478,11 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 
 .table td.actions .inline-form { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 240px; }
 .table td.actions .inline-form .btn { margin-left: 0; }
+
+/* ---------- crash ---------- */
+
+.crash { max-width: 520px; margin: 15vh auto; padding: 0 24px; display: grid; gap: 12px; }
+.crash h1 { font-size: var(--fs-lg); margin: 0; }
+.crash p { margin: 0; color: var(--text-2); }
+.crash pre { margin: 0; padding: 10px 12px; font-size: var(--fs-xs); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); white-space: pre-wrap; }
+.crash .btn { justify-self: start; }
