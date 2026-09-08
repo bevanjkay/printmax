@@ -10,7 +10,7 @@ import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, Dropzone, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useJobs } from "../hooks.js";
-import { defaultsFrom, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
+import { defaultsFrom, describeReason, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -119,7 +119,9 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
             <div className="printer-state">
               <Badge tone={stateTone(printer.summary.state)}>{printer.summary.state}</Badge>
               {printer.location && <span>{printer.location}</span>}
-              {printer.summary.stateReasons.length > 0 && <span className="danger-text">{printer.summary.stateReasons.join(", ")}</span>}
+              {printer.summary.stateReasons.map(describeReason).map(r => (
+                <span key={r.text} className={r.severity === "error" ? "danger-text" : r.severity === "warning" ? "warning-text" : "muted"}>{r.text}</span>
+              ))}
             </div>
             {stopped && <Notice tone="warning">This printer reports it is stopped. You can queue the job; it prints when the printer recovers.</Notice>}
           </div>
@@ -140,7 +142,7 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
                         <label key={p.id} className={`preset-card${presetId === p.id ? " active" : ""}${p.problems.length > 0 ? " unavailable" : ""}`}>
                           <input type="radio" name="preset" value={p.id} checked={presetId === p.id} disabled={p.problems.length > 0} onChange={() => choosePreset(p.id)} />
                           <strong>{p.name}</strong>
-                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (summariseOptions(fields, p.options, primaryNames) || "Printer defaults")}</span>
+                          <span>{p.problems.length > 0 ? "Needs attention; ask an admin" : (summariseOptions(fields, p.options, primaryNames, { changesOnly: true }) || "Printer defaults")}</span>
                           {p.problems.length === 0 && p.description && <span className="note">{p.description}</span>}
                         </label>
                       ))}
