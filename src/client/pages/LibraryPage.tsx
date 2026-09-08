@@ -99,7 +99,7 @@ function Editor({ user, printer, presets, entry, onSaved, onCancel }: EditorProp
   );
 }
 
-function PrintCopies({ entry, onDone, onError }: { entry: StoredJobDto; onDone: () => void; onError: (err: unknown) => void }) {
+function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto; onDone: () => void; onCancel: () => void; onError: (err: unknown) => void }) {
   const [copies, setCopies] = useState(Number(entry.effectiveOptions.copies ?? 1) || 1);
   const [busy, setBusy] = useState(false);
 
@@ -122,7 +122,7 @@ function PrintCopies({ entry, onDone, onError }: { entry: StoredJobDto; onDone: 
     <form className="inline-form" onSubmit={submit}>
       <input className="control" type="number" inputMode="numeric" min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={e => setCopies(Math.max(1, Number(e.target.value) || 1))} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
-      <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+      <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
   );
 }
@@ -302,6 +302,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                     onPrinted();
                                     void refresh();
                                   }}
+                                  onCancel={() => setPrinting(null)}
                                   onError={(err) => {
                                     setPrinting(null);
                                     fail(err);
