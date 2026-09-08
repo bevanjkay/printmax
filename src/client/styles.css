@@ -477,8 +477,12 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 
 /* ---------- print again ---------- */
 
-.table td.actions .inline-form { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 240px; }
+.table td.actions .inline-form { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 220px; }
 .table td.actions .inline-form .btn { margin-left: 0; }
+/* Rows with several actions wrap them rather than pushing the table into a scroll. */
+.table.jobs td.actions { white-space: normal; min-width: 150px; max-width: 220px; }
+.table.jobs td.actions .btn { margin: 2px 0 2px 6px; }
+.table.jobs td.meta:not(.created) { max-width: 320px; overflow-wrap: anywhere; }
 
 /* ---------- crash ---------- */
 

@@ -3,6 +3,7 @@ import type { Db } from "./db.js";
 import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
+import { unlinkSync } from "node:fs";
 import { enumName } from "../shared/enums.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
@@ -255,7 +256,16 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
 
 export function deletePrinter(db: Db, id: number): void {
   requirePrinter(db, id);
+  const stored = db.prepare("SELECT file_path FROM stored_jobs WHERE printer_id = ?").all(id) as unknown as Array<{ file_path: string }>;
   db.prepare("DELETE FROM printers WHERE id = ?").run(id);
+  for (const row of stored) {
+    try {
+      unlinkSync(row.file_path);
+    }
+    catch {
+      // already gone
+    }
+  }
 }
 
 function labelled(caps: IppAttributes, name: string): string[] {

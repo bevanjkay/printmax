@@ -11,8 +11,10 @@ async function main(): Promise<void> {
   const config = loadConfig();
   try {
     mkdirSync(config.uploadDir, { recursive: true });
+    mkdirSync(config.storedDir, { recursive: true });
     accessSync(config.dataDir, constants.W_OK);
     accessSync(config.uploadDir, constants.W_OK);
+    accessSync(config.storedDir, constants.W_OK);
   }
   catch (err) {
     const uid = process.getuid?.() ?? "?";
@@ -30,6 +32,7 @@ async function main(): Promise<void> {
   const app = await buildApp({
     db,
     uploadDir: config.uploadDir,
+    storedDir: config.storedDir,
     maxUploadBytes: config.maxUploadBytes,
     discoveryTimeoutMs: config.discoveryTimeoutMs,
     staticDir: config.staticDir,

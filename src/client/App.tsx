@@ -2,18 +2,19 @@ import type { ReactNode } from "react";
 import type { AuthState, PrinterDto, UserDto } from "../shared/types.js";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { IconJobs, IconLogout, IconPresets, IconPrinter, IconSliders, IconUser, IconUsers } from "./components/Icons.js";
+import { IconJobs, IconLibrary, IconLogout, IconPresets, IconPrinter, IconSliders, IconUser, IconUsers } from "./components/Icons.js";
 import { BrandMark, Notice } from "./components/ui.js";
 import { AccountPage } from "./pages/AccountPage.js";
 import { AdminPrintersPage } from "./pages/AdminPrintersPage.js";
 import { JobsPage } from "./pages/JobsPage.js";
+import { LibraryPage } from "./pages/LibraryPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { PresetsPage } from "./pages/PresetsPage.js";
 import { PrintPage } from "./pages/PrintPage.js";
 import { UsersPage } from "./pages/UsersPage.js";
 import { useAsyncError } from "./util.js";
 
-type Page = "print" | "jobs" | "presets" | "printers" | "users" | "account";
+type Page = "print" | "jobs" | "presets" | "library" | "printers" | "users" | "account";
 
 interface PageDef {
   id: Page;
@@ -28,6 +29,7 @@ const PAGES: PageDef[] = [
   { id: "print", label: "Print", title: "Print", description: "Send a document to a printer.", icon: <IconPrinter /> },
   { id: "jobs", label: "Jobs", title: "Jobs", description: "Everything printed, and what the printer said about it.", icon: <IconJobs /> },
   { id: "presets", label: "Presets", title: "Presets", description: "Saved settings to pick instead of choosing options each time.", icon: <IconPresets /> },
+  { id: "library", label: "Library", title: "Library", description: "Documents kept for good, each with its preset, so printing them again is one click.", icon: <IconLibrary /> },
   { id: "printers", label: "Printers", title: "Printers", description: "Add printers and check what they can do.", icon: <IconSliders />, admin: true },
   { id: "users", label: "Users", title: "Users", description: "Who can sign in, and who can administer.", icon: <IconUsers />, admin: true },
   { id: "account", label: "Account", title: "Account", description: "Your sign-in details.", icon: <IconUser /> },
@@ -144,6 +146,7 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
           )}
           {page === "jobs" && <JobsPage user={user} refreshKey={jobsKey} />}
           {page === "presets" && <PresetsPage user={user} printers={list} />}
+          {page === "library" && <LibraryPage user={user} printers={list} onPrinted={() => setJobsKey(k => k + 1)} />}
           {page === "printers" && user.role === "admin" && <AdminPrintersPage printers={list} onChanged={refreshPrinters} />}
           {page === "users" && user.role === "admin" && <UsersPage me={user} />}
           {page === "account" && <AccountPage user={user} />}

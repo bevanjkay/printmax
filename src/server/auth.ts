@@ -83,6 +83,15 @@ export function setPassword(db: Db, userId: number, password: unknown): void {
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
 }
 
+export function setRole(db: Db, userId: number, role: unknown): UserRow {
+  if (role !== "admin" && role !== "user")
+    throw new HttpError(400, "role must be \"admin\" or \"user\"");
+  if (!getUser(db, userId))
+    throw notFound("user");
+  db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
+  return getUser(db, userId)!;
+}
+
 export function deleteUser(db: Db, id: number): void {
   if (!getUser(db, id))
     throw notFound("user");

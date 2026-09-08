@@ -85,6 +85,27 @@ const MIGRATIONS: string[] = [
   ALTER TABLE printers ADD COLUMN ppd TEXT;
   ALTER TABLE printers ADD COLUMN print_mode TEXT NOT NULL DEFAULT 'ipp';
   `,
+  `
+  CREATE TABLE stored_jobs (
+    id INTEGER PRIMARY KEY,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    preset_id INTEGER REFERENCES presets(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK (scope IN ('global', 'user')),
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    byte_size INTEGER NOT NULL,
+    document_format TEXT NOT NULL,
+    options TEXT NOT NULL DEFAULT '{}',
+    preset_options TEXT NOT NULL DEFAULT '{}',
+    print_count INTEGER NOT NULL DEFAULT 0,
+    last_printed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX stored_jobs_printer ON stored_jobs(printer_id);
+  `,
 ];
 
 export function openDb(file: string): Db {

@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -70,7 +70,29 @@ export const api = {
     return request<JobDto>("/api/jobs", { method: "POST", body: form });
   },
 
+  listLibrary: (printerId?: number) => request<StoredJobDto[]>(`/api/library${printerId ? `?printerId=${printerId}` : ""}`),
+  addToLibrary: (input: { printerId: number; presetId: number | null; name: string; scope: "global" | "user"; file: File }) => {
+    const form = new FormData();
+    form.append("printerId", String(input.printerId));
+    if (input.presetId)
+      form.append("presetId", String(input.presetId));
+    form.append("name", input.name);
+    form.append("scope", input.scope);
+    form.append("file", input.file);
+    return request<StoredJobDto>("/api/library", { method: "POST", body: form });
+  },
+  keepJob: (jobId: number, input: { name: string; scope: "global" | "user" }) => request<StoredJobDto>(`/api/library/from-job/${jobId}`, json("POST", input)),
+  updateStoredJob: (id: number, input: { name: string; presetId: number | null; scope: "global" | "user"; options: Options }) => request<StoredJobDto>(`/api/library/${id}`, json("PUT", input)),
+  replaceStoredFile: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<StoredJobDto>(`/api/library/${id}/file`, { method: "PUT", body: form });
+  },
+  printStoredJob: (id: number, copies?: number) => request<JobDto>(`/api/library/${id}/print`, json("POST", copies === undefined ? {} : { copies })),
+  deleteStoredJob: (id: number) => request<void>(`/api/library/${id}`, json("DELETE")),
+
   listUsers: () => request<UserDto[]>("/api/users"),
+  setUserRole: (id: number, role: "admin" | "user") => request<UserDto>(`/api/users/${id}/role`, json("PUT", { role })),
   createUser: (input: { name: string; email: string; password: string; role: "admin" | "user" }) => request<UserDto>("/api/users", json("POST", input)),
   deleteUser: (id: number) => request<void>(`/api/users/${id}`, json("DELETE")),
   setUserPassword: (id: number, password: string) => request<void>(`/api/users/${id}/password`, json("POST", { password })),

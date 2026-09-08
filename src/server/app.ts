@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Db } from "./db.js";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import fastifyCookie from "@fastify/cookie";
 import fastifyHelmet from "@fastify/helmet";
@@ -12,6 +12,7 @@ import { requireAdmin, requireUser, SESSION_COOKIE, sessionUser } from "./auth.j
 import { HttpError } from "./errors.js";
 import { authRoutes } from "./routes/auth.js";
 import { jobRoutes } from "./routes/jobs.js";
+import { libraryRoutes } from "./routes/library.js";
 import { presetRoutes } from "./routes/presets.js";
 import { adminPrinterRoutes, printerRoutes } from "./routes/printers.js";
 import { userRoutes } from "./routes/users.js";
@@ -19,6 +20,8 @@ import { userRoutes } from "./routes/users.js";
 export interface AppOptions {
   db: Db;
   uploadDir: string;
+  /** Library documents; defaults to a sibling of uploadDir. Never swept by retention. */
+  storedDir?: string;
   maxUploadBytes?: number;
   discoveryTimeoutMs?: number;
   staticDir?: string;
@@ -101,6 +104,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     printerRoutes(scope, db);
     presetRoutes(scope, db);
     jobRoutes(scope, db, opts.uploadDir);
+    const storedDir = opts.storedDir ?? path.join(path.dirname(opts.uploadDir), "stored");
+    mkdirSync(storedDir, { recursive: true });
+    libraryRoutes(scope, db, { storedDir, uploadDir: opts.uploadDir });
   });
 
   await app.register(async (scope) => {

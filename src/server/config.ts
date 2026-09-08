@@ -6,6 +6,8 @@ export interface Config {
   host: string;
   dataDir: string;
   uploadDir: string;
+  /** Library documents, kept until deleted. */
+  storedDir: string;
   dbPath: string;
   retentionDays: number;
   pollIntervalMs: number;
@@ -44,6 +46,7 @@ export function loadConfig(env = process.env): Config {
     host: env.HOST ?? "0.0.0.0",
     dataDir,
     uploadDir: path.resolve(env.UPLOAD_DIR ?? path.join(dataDir, "uploads")),
+    storedDir: path.resolve(env.STORED_DIR ?? path.join(dataDir, "stored")),
     dbPath: path.resolve(env.DB_PATH ?? path.join(dataDir, "printmax.db")),
     retentionDays: int("RETENTION_DAYS", 7),
     pollIntervalMs: int("POLL_INTERVAL_MS", 3000),

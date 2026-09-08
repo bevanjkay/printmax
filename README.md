@@ -47,6 +47,7 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `CAPS_REFRESH_HOURS` | `24` | Re-fetch printer capabilities older than this; `0` disables |
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
+| `STORED_DIR` | `/data/stored` | Library documents, kept until deleted |
 | `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
 | `TRUST_PROXY` | `true` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
 
@@ -120,6 +121,15 @@ and switch the printer to **PostScript via PPD**. From then on:
 
 It is opt-in per printer and reversible; plain IPP remains the default. The proof for the
 Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/booklet-8-pages.pdf`).
+
+## Library
+
+The Library keeps documents for good, each paired with a preset: the weekly bulletin, the giving
+envelope, the welcome card. Printing one is a click plus a copies count. Entries can be shared
+with everyone (admins) or personal, like presets, and any job whose file is still on the server
+can be kept from the Jobs list with **Keep**. Files live under `/data/stored` and are never swept
+by retention; the preset is followed by reference, so improving it improves every document that
+uses it.
 
 ## Preset files
 

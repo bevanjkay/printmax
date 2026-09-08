@@ -94,6 +94,15 @@ export function IconDownload(p: Props) {
   );
 }
 
+export function IconLibrary(p: Props) {
+  return (
+    <Svg {...p}>
+      <path d="M2.75 2.75h3v10.5h-3zM7.25 2.75h3v10.5h-3z" />
+      <path d="M11 3.4l2.9-.75 2.35 9.9-2.9.75z" transform="translate(-1.2 0)" />
+    </Svg>
+  );
+}
+
 export function IconUpload(p: Props) {
   return (
     <Svg {...p}>

@@ -75,6 +75,17 @@ export function UsersPage({ me }: { me: UserDto }) {
     }
   }
 
+  async function changeRole(user: UserDto, role: "admin" | "user") {
+    clear();
+    try {
+      await api.setUserRole(user.id, role);
+      await refresh();
+    }
+    catch (err) {
+      fail(err);
+    }
+  }
+
   async function remove(user: UserDto) {
     clear();
     try {
@@ -100,7 +111,6 @@ export function UsersPage({ me }: { me: UserDto }) {
                       <th>Name</th>
                       <th>Email</th>
                       <th>Role</th>
-                      <th>Added</th>
                       <th className="actions"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
@@ -111,9 +121,17 @@ export function UsersPage({ me }: { me: UserDto }) {
                           {u.name}
                           {u.id === me.id && <span className="meta"> (you)</span>}
                         </td>
-                        <td className="meta email" title={u.email}>{u.email}</td>
-                        <td>{u.role === "admin" ? <Badge tone="info" plain>Admin</Badge> : <Badge plain>User</Badge>}</td>
-                        <td className="meta num">{formatDate(u.createdAt)}</td>
+                        <td className="meta email" title={`${u.email} · added ${formatDate(u.createdAt)}`}>{u.email}</td>
+                        <td>
+                          {u.id === me.id
+                            ? <Badge tone="info" plain>Admin</Badge>
+                            : (
+                                <select className="control" style={{ width: "auto" }} aria-label={`Role of ${u.name}`} value={u.role} onChange={e => void changeRole(u, e.target.value as "admin" | "user")}>
+                                  <option value="user">User</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                              )}
+                        </td>
                         <td className="actions">
                           {resetting === u.id
                             ? <ResetPassword user={u} onDone={() => setResetting(null)} />

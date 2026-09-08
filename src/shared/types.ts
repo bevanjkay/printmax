@@ -129,6 +129,31 @@ export interface PresetImportResult {
   skipped: Array<{ name: string; reason: string }>;
 }
 
+/** A document kept for good, paired with a preset, so printing it again is one click. */
+export interface StoredJobDto {
+  id: number;
+  printerId: number;
+  printerName: string | null;
+  presetId: number | null;
+  presetName: string | null;
+  name: string;
+  scope: "global" | "user";
+  ownerId: number | null;
+  filename: string;
+  byteSize: number;
+  documentFormat: string;
+  /** Overrides layered on the preset. */
+  options: Record<string, unknown>;
+  /** What a print would use right now: the preset as it is today, plus the overrides. */
+  effectiveOptions: Record<string, unknown>;
+  problems: string[];
+  editable: boolean;
+  printCount: number;
+  lastPrintedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface JobDto {
   id: number;
   userId: number | null;
