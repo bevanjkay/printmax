@@ -1,7 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { accessSync, constants, mkdirSync } from "node:fs";
 import process from "node:process";
 import { buildApp } from "./app.js";
-import { purgeExpiredSessions } from "./auth.js";
+import { countUsers, purgeExpiredSessions } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { openDb } from "./db.js";
 import { startJobWorker, sweepExpiredFiles } from "./jobs.js";
@@ -20,6 +21,12 @@ async function main(): Promise<void> {
   }
   const db = openDb(config.dbPath);
 
+  // Until the first admin exists, anyone who reaches the setup page could claim it; the token
+  // keeps that to whoever can read this log (or set SETUP_TOKEN).
+  const setupToken = countUsers(db) === 0 ? config.setupToken ?? randomBytes(12).toString("base64url") : null;
+  if (setupToken)
+    console.log(`printmax has no accounts yet. Create the admin account on the sign-in page with this setup token: ${setupToken}`);
+
   const app = await buildApp({
     db,
     uploadDir: config.uploadDir,
@@ -27,6 +34,8 @@ async function main(): Promise<void> {
     discoveryTimeoutMs: config.discoveryTimeoutMs,
     staticDir: config.staticDir,
     logger: true,
+    setupToken,
+    trustProxy: config.trustProxy,
   });
 
   const worker = startJobWorker(db, {

@@ -13,6 +13,18 @@ export interface Config {
   discoveryTimeoutMs: number;
   maxUploadBytes: number;
   staticDir: string;
+  /** Required by the first-run setup page; generated and logged at startup when unset. */
+  setupToken: string | null;
+  /** Fastify's trustProxy: true behind a reverse proxy, false when clients reach the app directly, or a CIDR list. */
+  trustProxy: boolean | string;
+}
+
+function trustProxyFrom(raw: string | undefined): boolean | string {
+  if (raw === undefined || raw === "" || raw === "true")
+    return true;
+  if (raw === "false")
+    return false;
+  return raw;
 }
 
 function int(name: string, fallback: number): number {
@@ -39,5 +51,7 @@ export function loadConfig(env = process.env): Config {
     discoveryTimeoutMs: int("DISCOVERY_TIMEOUT_MS", 3000),
     maxUploadBytes: int("MAX_UPLOAD_MB", 200) * 1024 * 1024,
     staticDir: path.resolve(env.STATIC_DIR ?? path.join(import.meta.dirname, "..", "client")),
+    setupToken: env.SETUP_TOKEN || null,
+    trustProxy: trustProxyFrom(env.TRUST_PROXY),
   };
 }

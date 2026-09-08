@@ -54,8 +54,8 @@ function sections(fields: FormField[]): Map<string, FormField[]> {
 
 /** The generated option editor: one control per printer-reported job attribute. */
 export function OptionsForm({ fields, value, onChange, disabled, friendly }: Props) {
-  // A section opens itself when it holds a chosen value; once the reader has opened or closed it
-  // themselves that choice wins, so editing a field cannot make its own section jump shut.
+  // Sections start collapsed; the header's "N set" count says what is inside. Once the reader
+  // opens or closes one, that choice sticks for the life of the form.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
   const set = (name: string, v: unknown) => {
@@ -169,7 +169,7 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
           return (
             <details
               key={name}
-              open={toggled[name] ?? chosen > 0}
+              open={toggled[name] ?? false}
               onToggle={(e) => {
                 const open = e.currentTarget.open;
                 setToggled(t => ({ ...t, [name]: open }));

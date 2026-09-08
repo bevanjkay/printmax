@@ -11,6 +11,8 @@ export interface UserDto {
 export interface AuthState {
   user: UserDto | null;
   needsSetup: boolean;
+  /** Setup needs the token printed in the server log (or SETUP_TOKEN). */
+  setupTokenRequired?: boolean;
 }
 
 export interface PrinterSummary {

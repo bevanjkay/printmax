@@ -3,7 +3,9 @@ import type { Db } from "./db.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import fastifyCookie from "@fastify/cookie";
+import fastifyHelmet from "@fastify/helmet";
 import fastifyMultipart from "@fastify/multipart";
+import fastifyRateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import { requireAdmin, requireUser, SESSION_COOKIE, sessionUser } from "./auth.js";
@@ -21,12 +23,46 @@ export interface AppOptions {
   discoveryTimeoutMs?: number;
   staticDir?: string;
   logger?: boolean | FastifyBaseLogger;
+  /** When set, the first-run setup page must present this token. */
+  setupToken?: string | null;
+  /** Default true: the usual deployment sits behind a reverse proxy that sets X-Forwarded-*. */
+  trustProxy?: boolean | string;
+  /** Attempts allowed per client IP per minute on sign-in and setup. */
+  loginAttemptsPerMinute?: number;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? false, trustProxy: true });
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? true });
   const { db } = opts;
 
+  // The app loads nothing from outside itself, so the policy can be strict. Inline styles are
+  // React's style props; data: images are the CSS select chevron. No upgrade-insecure-requests,
+  // because a LAN install may legitimately run on plain HTTP.
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: {
+      directives: {
+        "default-src": ["'self'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "blob:"],
+        "connect-src": ["'self'"],
+        "font-src": ["'self'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"],
+        "form-action": ["'self'"],
+        "frame-ancestors": ["'none'"],
+        "upgrade-insecure-requests": null,
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    frameguard: { action: "deny" },
+  });
+  await app.register(fastifyRateLimit, {
+    global: false,
+    max: opts.loginAttemptsPerMinute ?? 10,
+    timeWindow: "1 minute",
+    errorResponseBuilder: (_req, context) => new HttpError(429, `too many attempts; try again in ${Math.ceil(context.ttl / 1000)} seconds`),
+  });
   await app.register(fastifyCookie);
   // Browsers send "Content-Type: application/json" on body-less POSTs; Fastify rejects those by default.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -58,7 +94,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get("/api/health", async () => ({ ok: true }));
-  authRoutes(app, db);
+  authRoutes(app, db, { setupToken: opts.setupToken ?? null });
 
   await app.register(async (scope) => {
     scope.addHook("onRequest", requireUser);

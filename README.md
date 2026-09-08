@@ -47,6 +47,8 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `CAPS_REFRESH_HOURS` | `24` | Re-fetch printer capabilities older than this; `0` disables |
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
+| `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
+| `TRUST_PROXY` | `true` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
 
 The app runs as the unprivileged `node` user (uid 1000). The container starts as root only to
 hand `/data` to that user, so a bind-mounted host directory or a volume created by an older image
@@ -69,6 +71,17 @@ things to check on the proxy: allow request bodies up to `MAX_UPLOAD_MB` (nginx:
 or WebSockets.
 
 ### Security notes
+
+- Every printing, preset and printer route needs a signed-in session; sessions are random tokens
+  stored hashed, `HttpOnly`, `SameSite=Lax`, and `Secure` behind HTTPS.
+- Sign-in and setup are rate limited to 10 attempts per client IP per minute (from
+  `X-Forwarded-For` when `TRUST_PROXY` is on, so set it to `false` if nothing sits in front).
+- The first-run setup page needs the token printed in the log at startup, so an instance exposed
+  before its admin exists cannot be claimed by a passer-by.
+- Responses carry a self-only Content Security Policy and the usual Helmet headers; the app loads
+  nothing from outside itself.
+- For internet exposure an identity-aware proxy (Cloudflare Access or similar) in front of the
+  sign-in page is still the strongest cheap control.
 
 - Sessions are random tokens stored server-side; nothing to configure and no signing secret.
 - Passwords are hashed with scrypt.

@@ -7,11 +7,13 @@ import { useAsyncError } from "../util.js";
 
 interface Props {
   needsSetup: boolean;
+  setupTokenRequired: boolean;
   onSignedIn: (user: UserDto) => void;
 }
 
-export function LoginPage({ needsSetup, onSignedIn }: Props) {
+export function LoginPage({ needsSetup, setupTokenRequired, onSignedIn }: Props) {
   const [name, setName] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,7 +24,7 @@ export function LoginPage({ needsSetup, onSignedIn }: Props) {
     setBusy(true);
     clear();
     try {
-      const user = needsSetup ? await api.setup({ name, email, password }) : await api.login({ email, password });
+      const user = needsSetup ? await api.setup({ name, email, password, ...(setupTokenRequired ? { setupToken } : {}) }) : await api.login({ email, password });
       onSignedIn(user);
     }
     catch (err) {
@@ -54,6 +56,11 @@ export function LoginPage({ needsSetup, onSignedIn }: Props) {
           <Field label="Password" hint={needsSetup ? "At least 8 characters." : undefined}>
             <input className="control" type="password" required minLength={needsSetup ? 8 : undefined} autoComplete={needsSetup ? "new-password" : "current-password"} value={password} onChange={e => setPassword(e.target.value)} />
           </Field>
+          {needsSetup && setupTokenRequired && (
+            <Field label="Setup token" hint="Printed in the server log when printmax started, or the SETUP_TOKEN you configured.">
+              <input className="control" required autoComplete="off" spellCheck={false} value={setupToken} onChange={e => setSetupToken(e.target.value)} />
+            </Field>
+          )}
           {error && <Notice tone="error">{error}</Notice>}
           <Button type="submit" variant="primary" size="lg" loading={busy} style={{ width: "100%", marginTop: 6 }}>
             {needsSetup ? "Create account" : "Sign in"}

@@ -28,7 +28,7 @@ export type Options = Record<string, unknown>;
 
 export const api = {
   me: () => request<AuthState>("/api/auth/me"),
-  setup: (input: { name: string; email: string; password: string }) => request<UserDto>("/api/auth/setup", json("POST", input)),
+  setup: (input: { name: string; email: string; password: string; setupToken?: string }) => request<UserDto>("/api/auth/setup", json("POST", input)),
   login: (input: { email: string; password: string }) => request<UserDto>("/api/auth/login", json("POST", input)),
   logout: () => request<void>("/api/auth/logout", json("POST")),
   changePassword: (input: { currentPassword: string; newPassword: string }) => request<void>("/api/auth/password", json("POST", input)),
