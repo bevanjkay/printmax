@@ -15,8 +15,6 @@ updates:
       default-days: 7
   - package-ecosystem: github-actions
     directory: /
-    exclude-paths:
-      - .github/workflows/actionlint.yml
     schedule:
       interval: weekly
       day: monday
