@@ -24,6 +24,10 @@
 *TTRasterizer: Type42
 *DefaultResolution: 600dpi
 
+*HWMargins: 12 12 12 12
+*ImageableArea A3/A3 (297 x 420mm): "12 12 830 1179"
+*ImageableArea A4/A4 (210 x 297mm): "12 12 583 830"
+*ImageableArea A5/A5 (148 x 210mm): "12 12 408 583"
 *PaperDimension A3/A3 (297 x 420mm): "842 1191"
 *PaperDimension A4/A4 (210 x 297mm): "595 842"
 *PaperDimension A5/A5 (148 x 210mm): "420 595"

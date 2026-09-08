@@ -1,13 +1,19 @@
 import { Buffer } from "node:buffer";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { formFor } from "../src/server/form.js";
 import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/assemble.js";
-import { ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
+import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
 import { ghostscriptAvailable, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { validateJobOptions } from "../src/server/validation.js";
 
+const execFileAsync = promisify(execFile);
 const text = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 const ppd = parsePpd(text);
 const byKey = Object.fromEntries(ppd.options.map(o => [o.key, o]));
@@ -28,6 +34,10 @@ describe("parsePpd", () => {
     expect(byKey.Stapling?.choices.find(c => c.value === "SS")?.code).toBe("<</TSBPrivate (DSSC PRINT STAPLING=1028) >> setpagedevice");
     expect(byKey.Folding?.choices.map(c => c.code)).toEqual(["", "<</TSBPrivate (DSSC PRINT FOLD=CENTER) >> setpagedevice"]);
     expect(ppd.paperDimensions.A5).toEqual({ width: 420, height: 595 });
+    expect(ppd.imageableAreas.A5).toEqual({ llx: 12, lly: 12, urx: 408, ury: 583 });
+    expect(ppd.hwMargins).toEqual({ left: 12, bottom: 12, right: 12, top: 12 });
+    expect(marginsFor(ppd, "A5")).toEqual({ left: 12, bottom: 12, right: 12, top: 12 });
+    expect(marginsFor(ppd, undefined)).toEqual(ppd.hwMargins);
     expect(ppd.constraints).toContainEqual({ key1: "Finisher", choice1: "Hanging1", key2: "Stapling", choice2: "SS" });
   });
 });
@@ -109,12 +119,41 @@ describe("pPD options as a form and in validation", () => {
 
   it("keeps copies as the one IPP attribute in PostScript mode and refuses ppd: keys in IPP mode", () => {
     expect(validateJobOptions({ "copies": 2, "ppd:Stapling": "SS" }, profile)).toEqual([]);
+    expect(validateJobOptions({ "fit-to-margins": "true" }, profile)).toEqual([]);
+    expect(validateJobOptions({ "fit-to-margins": "sometimes" }, profile)[0]).toMatch(/must be true or false/);
+    expect(formFor(profile).map(f => f.name).slice(0, 2)).toEqual(["copies", "fit-to-margins"]);
     expect(validateJobOptions({ sides: "one-sided" }, profile)[0]).toMatch(/"sides" is not used in PostScript mode/);
     expect(validateJobOptions({ "ppd:Stapling": "SS" }, { ...profile, mode: "ipp" })[0]).toMatch(/needs PostScript mode/);
   });
 });
 
 describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
+  it("shrinks and centres each page inside the printer's margins when asked", async () => {
+    const pdf = new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname;
+    const box = async (ps: Buffer) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "printmax-bbox-"));
+      const file = path.join(dir, "page.ps");
+      await writeFile(file, ps);
+      try {
+        const { stderr } = await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=bbox", "-dFirstPage=1", "-dLastPage=1", file]);
+        return /%%BoundingBox: (\d+) (\d+) (\d+) (\d+)/.exec(stderr)!.slice(1).map(Number);
+      }
+      finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    };
+    const edge = await box(await pdfToPostScript(pdf));
+    const kept = await box(await pdfToPostScript(pdf, { margins: { left: 12, bottom: 12, right: 12, top: 12 } }));
+    expect(edge[0]).toBeLessThan(20);
+    expect(kept[0]).toBeGreaterThanOrEqual(24);
+    expect(kept[1]).toBeGreaterThanOrEqual(24);
+    expect(kept[2]).toBeLessThanOrEqual(420 - 24);
+    expect(kept[3]).toBeLessThanOrEqual(595 - 24);
+    // Uniform scale: the content's aspect ratio is preserved.
+    const ratio = (b: number[]) => (b[2]! - b[0]!) / (b[3]! - b[1]!);
+    expect(ratio(kept)).toBeCloseTo(ratio(edge), 2);
+  });
+
   it("converts a PDF to DSC PostScript with one %%Page per page, forcing the paper when asked", async () => {
     const ps = (await pdfToPostScript(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname, { paper: { width: 595, height: 842 } })).toString("latin1");
     expect(ps.startsWith("%!PS-Adobe")).toBe(true);

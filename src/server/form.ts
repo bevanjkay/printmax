@@ -6,7 +6,7 @@ import type { FormField } from "../shared/types.js";
  */
 import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
 import type { PrinterProfile } from "./printers.js";
-import { ATTRIBUTE_UI, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
+import { ATTRIBUTE_UI, FIT_TO_MARGINS, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
 import { mediaColMembers } from "./ipp/options.js";
@@ -122,7 +122,15 @@ export function formFor(profile: PrinterProfile): FormField[] {
   if (profile.mode !== "postscript" || !profile.ppd)
     return buildForm(profile.caps);
   const copies = buildForm(profile.caps).find(f => f.name === "copies") ?? { name: "copies", label: "Copies", widget: "number" as const, min: 1, max: 999, default: 1 };
-  return [copies, ...ppdFields(profile.ppd)];
+  const margins: FormField = {
+    name: FIT_TO_MARGINS,
+    label: "Keep printer margins",
+    widget: "select",
+    help: "Shrinks each page slightly so nothing falls in the strip the printer cannot reach. Off prints edge to edge.",
+    choices: [{ value: "false", label: "Off" }, { value: "true", label: "On" }],
+    default: "false",
+  };
+  return [copies, margins, ...ppdFields(profile.ppd)];
 }
 
 /** Initial option map for a printer: every field's default, in option-map form. */

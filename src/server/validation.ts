@@ -4,7 +4,7 @@
  * mode against the PPD, with `copies` still an IPP attribute.
  */
 import type { PrinterProfile } from "./printers.js";
-import { PPD_PREFIX } from "../shared/attributes.js";
+import { FIT_TO_MARGINS, PPD_PREFIX } from "../shared/attributes.js";
 import { checkConstraints, describeViolation } from "./ipp/constraints.js";
 import { validateOptions } from "./ipp/options.js";
 import { validatePpdOptions } from "./ppd/form.js";
@@ -14,10 +14,16 @@ export function validateJobOptions(options: Record<string, unknown>, profile: Pr
     const errors: string[] = [];
     const ipp: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(options)) {
-      if (name === "copies")
+      if (name === "copies") {
         ipp[name] = value;
-      else if (!name.startsWith(PPD_PREFIX))
+      }
+      else if (name === FIT_TO_MARGINS) {
+        if (value !== true && value !== false && value !== "true" && value !== "false")
+          errors.push(`"${FIT_TO_MARGINS}" must be true or false`);
+      }
+      else if (!name.startsWith(PPD_PREFIX)) {
         errors.push(`"${name}" is not used in PostScript mode; the PPD options replace it`);
+      }
     }
     return [...errors, ...validateOptions(ipp, profile.caps), ...validatePpdOptions(profile.ppd, options)];
   }

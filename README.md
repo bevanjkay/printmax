@@ -117,7 +117,10 @@ and switch the printer to **PostScript via PPD**. From then on:
   copies, in place of the IPP attributes;
 - each job is a PDF converted with Ghostscript and wrapped in the PPD's PJL header with every
   option's snippet in `*OrderDependency` order, exactly as CUPS emits it;
-- PDF is the only accepted upload while the mode is on.
+- PDF is the only accepted upload while the mode is on;
+- pages go out edge to edge, so the only clipping is the printer's own unprintable strip. Turn on
+  **Keep printer margins** (per job or in a preset) to shrink each page uniformly into the PPD's
+  imageable area instead, the way the vendor driver does.
 
 It is opt-in per printer and reversible; plain IPP remains the default. The proof for the
 Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/booklet-8-pages.pdf`).

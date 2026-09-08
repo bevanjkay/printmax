@@ -42,6 +42,10 @@ export interface ParsedPpd {
   constraints: PpdConstraint[];
   /** Points, keyed by PageSize choice. */
   paperDimensions: Record<string, { width: number; height: number }>;
+  /** Printable box in points (llx, lly, urx, ury), keyed by PageSize choice. */
+  imageableAreas: Record<string, { llx: number; lly: number; urx: number; ury: number }>;
+  /** *HWMargins (left, bottom, right, top) in points, for sizes without an imageable area. */
+  hwMargins: { left: number; bottom: number; right: number; top: number } | null;
   /** *JobPatchFile snippets, emitted ahead of every option as CUPS does. */
   jobPatchFiles: Array<{ name: string; code: string }>;
 }
@@ -127,7 +131,7 @@ function splitNameLabel(value: string): { name: string; label: string } {
 }
 
 export function parsePpd(text: string): ParsedPpd {
-  const ppd: ParsedPpd = { modelName: "", nickName: "", languageLevel: 2, jcl: null, options: [], constraints: [], paperDimensions: {}, jobPatchFiles: [] };
+  const ppd: ParsedPpd = { modelName: "", nickName: "", languageLevel: 2, jcl: null, options: [], constraints: [], paperDimensions: {}, jobPatchFiles: [], imageableAreas: {}, hwMargins: null };
   const jcl = { begin: "", toPs: "", end: "" };
   let sawJcl = false;
   let group = { name: "", label: "" };
@@ -198,6 +202,18 @@ export function parsePpd(text: string): ParsedPpd {
         if (e.quoted && e.value.trim())
           ppd.jobPatchFiles.push({ name: e.option ?? String(ppd.jobPatchFiles.length + 1), code: e.value.trim() });
         break;
+      case "ImageableArea": {
+        const m = /^(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/.exec(e.value);
+        if (e.option && m)
+          ppd.imageableAreas[e.option] = { llx: Number(m[1]), lly: Number(m[2]), urx: Number(m[3]), ury: Number(m[4]) };
+        break;
+      }
+      case "HWMargins": {
+        const m = /^(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/.exec(e.value);
+        if (m)
+          ppd.hwMargins = { left: Number(m[1]), bottom: Number(m[2]), right: Number(m[3]), top: Number(m[4]) };
+        break;
+      }
       case "PaperDimension": {
         const m = /^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/.exec(e.value);
         if (e.option && m)
