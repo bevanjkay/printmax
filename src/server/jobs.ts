@@ -55,6 +55,12 @@ const LOCAL_TERMINAL = new Set<string>([LocalJobState.failed, LocalJobState.unkn
 export const MAX_SUBMIT_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 2000;
 
+/** IPP statuses that mean "not right now" rather than "never": busy with another job, temporary error, paused intake. */
+const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([0x0502, 0x0505, 0x0506, 0x0507]);
+/** A busy printer is waited on at a steady cadence, for as long as a big job could plausibly take. */
+const BUSY_RETRY_DELAY_MS = 5000;
+const BUSY_GIVE_UP_MS = 10 * 60_000;
+
 export function isTerminal(state: string): boolean {
   return LOCAL_TERMINAL.has(state);
 }
@@ -202,8 +208,10 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
   catch (err) {
     const message = (err as Error).message;
     const attempts = job.attempts + 1;
-    if (err instanceof IppTransportError && attempts < MAX_SUBMIT_ATTEMPTS) {
-      const delay = BASE_RETRY_DELAY_MS * 2 ** (attempts - 1);
+    const transient = err instanceof IppStatusError && TRANSIENT_STATUSES.has(err.status);
+    const waitingOnPrinter = transient && Date.now() - new Date(job.created_at).getTime() < BUSY_GIVE_UP_MS;
+    if (waitingOnPrinter || (err instanceof IppTransportError && attempts < MAX_SUBMIT_ATTEMPTS)) {
+      const delay = waitingOnPrinter ? BUSY_RETRY_DELAY_MS : BASE_RETRY_DELAY_MS * 2 ** (attempts - 1);
       db.prepare("UPDATE jobs SET state = ?, error = ?, attempts = ?, next_attempt_at = ? WHERE id = ?")
         .run(LocalJobState.retrying, message, attempts, new Date(Date.now() + delay).toISOString(), job.id);
       return;

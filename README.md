@@ -10,8 +10,8 @@ a preset, print. Talks IPP directly to the printer, so there is no CUPS to run o
   Constraint and resolver data (PWG 5100.13) is honoured when the printer publishes it, with a
   one-click "apply suggested fix".
 - **Multi-user.** Local accounts, admin and user roles, per-user job history.
-- **No spooler.** Jobs retry with backoff when the printer is unreachable; rejections surface the
-  printer's own IPP status and message.
+- **No spooler.** Jobs retry with backoff when the printer is unreachable, and wait it out when it
+  says it is busy with another job; real rejections surface the printer's own IPP status and message.
 
 Status: milestones M1 to M3 of `print-server-plan.md` are built. M0 (the spike against the office
 Toshiba e-STUDIO) has its capabilities captured as a fixture and Validate-Job checked; a real print
