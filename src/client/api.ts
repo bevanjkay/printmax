@@ -59,6 +59,7 @@ export const api = {
 
   listJobs: (all = false) => request<JobDto[]>(`/api/jobs${all ? "?all=true" : ""}`),
   cancelJob: (id: number) => request<JobDto>(`/api/jobs/${id}/cancel`, json("POST")),
+  reprintJob: (id: number, copies?: number) => request<JobDto>(`/api/jobs/${id}/reprint`, json("POST", copies === undefined ? {} : { copies })),
   submitJob: (printerId: number, presetId: number | null, file: File, options: Options) => {
     const form = new FormData();
     form.append("printerId", String(printerId));

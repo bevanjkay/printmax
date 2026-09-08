@@ -1,8 +1,8 @@
 import type { FastifyInstance, InjectOptions } from "fastify";
 import type { IppAttributes } from "../src/server/ipp/codec.js";
-import type { CapsChangeDto, FormField, PresetDto, PresetExport, PresetImportResult, UserDto } from "../src/shared/types.js";
+import type { CapsChangeDto, FormField, JobDto, PresetDto, PresetExport, PresetImportResult, UserDto } from "../src/shared/types.js";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -325,6 +325,32 @@ describe("aPI", () => {
 
       const theirs = adminAll.find(j => j.filename === "admin.pdf") as unknown as { id: number };
       expect((await app.inject(as(userCookie, { method: "GET", url: `/api/jobs/${theirs.id}` }))).statusCode).toBe(404);
+    });
+
+    it("queues a retained job again with a different number of copies", async () => {
+      const user = (await app.inject(as(userCookie, { method: "GET", url: "/api/auth/me" }))).json().user as UserDto;
+      const original = path.join(workDir, "proof.pdf");
+      await writeFile(original, "%PDF-1.4\n%%EOF\n");
+      const inserted = db.prepare("INSERT INTO jobs (user_id, printer_id, filename, file_path, byte_size, document_format, options_final, state, created_at, completed_at) VALUES (?, ?, 'proof.pdf', ?, 14, 'application/pdf', ?, 'completed', ?, ?)")
+        .run(user.id, printerId, original, JSON.stringify({ copies: 1, sides: "two-sided-long-edge" }), new Date().toISOString(), new Date().toISOString());
+      const id = Number(inserted.lastInsertRowid);
+
+      const res = await app.inject(as(userCookie, { method: "POST", url: `/api/jobs/${id}/reprint`, payload: { copies: 5 } }));
+      expect(res.statusCode, res.body).toBe(201);
+      const again = res.json<JobDto>();
+      expect(again).toMatchObject({ filename: "proof.pdf", state: "queued", fileRetained: true, userId: user.id, options: { copies: 5, sides: "two-sided-long-edge" } });
+      expect(again.id).not.toBe(id);
+      const copy = (db.prepare("SELECT file_path FROM jobs WHERE id = ?").get(again.id) as { file_path: string }).file_path;
+      expect(copy).not.toBe(original);
+      expect(await readFile(copy, "utf8")).toBe("%PDF-1.4\n%%EOF\n");
+
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/jobs/${id}/reprint`, payload: { copies: 0 } }))).statusCode).toBe(400);
+      const adminsJob = (db.prepare("SELECT id FROM jobs WHERE filename = 'admin.pdf'").get() as { id: number }).id;
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/jobs/${adminsJob}/reprint`, payload: {} }))).statusCode).toBe(404);
+      db.prepare("UPDATE jobs SET file_path = NULL WHERE id = ?").run(id);
+      const gone = await app.inject(as(userCookie, { method: "POST", url: `/api/jobs/${id}/reprint`, payload: {} }));
+      expect(gone.statusCode).toBe(409);
+      expect(gone.json().error).toMatch(/no longer on the server/);
     });
   });
 });

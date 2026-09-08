@@ -4,7 +4,9 @@ import type { Db } from "./db.js";
 import type { IppAttributes } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import type { PrinterRow } from "./printers.js";
-import { readFile, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { copyFile, readFile, unlink } from "node:fs/promises";
+import path from "node:path";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError } from "./ipp/client.js";
@@ -242,6 +244,44 @@ export async function pollJob(db: Db, job: JobRow, printer: PrinterRow): Promise
     }
     if (err instanceof IppTransportError)
       return; // transient; try again next tick
+    throw err;
+  }
+}
+
+/**
+ * Queues the same document again with the same options, optionally with a different number of
+ * copies: print one as a proof, then the run. The file is copied so each job's retention is its own.
+ */
+export async function reprintJob(db: Db, id: number, user: UserRow, changes: { copies?: unknown } = {}): Promise<JobRow> {
+  const job = requireJob(db, id);
+  if (!canSeeJob(job, user))
+    throw notFound("job");
+  if (!job.file_path)
+    throw new HttpError(409, "the file for this job is no longer on the server");
+  const options = JSON.parse(job.options_final) as Record<string, unknown>;
+  if (changes.copies !== undefined) {
+    const copies = Number(changes.copies);
+    if (!Number.isInteger(copies) || copies < 1)
+      throw new HttpError(400, "copies must be a whole number of at least 1");
+    options.copies = copies;
+  }
+  const preset = job.preset_id === null ? undefined : getPreset(db, job.preset_id);
+  const filePath = path.join(path.dirname(job.file_path), `${randomUUID()}${path.extname(job.file_path)}`);
+  await copyFile(job.file_path, filePath);
+  try {
+    return createJob(db, {
+      printerId: job.printer_id,
+      user,
+      presetId: preset && canUsePreset(preset, user) ? preset.id : null,
+      filename: job.filename,
+      filePath,
+      byteSize: job.byte_size,
+      documentFormat: job.document_format,
+      options,
+    });
+  }
+  catch (err) {
+    await unlink(filePath).catch(() => {});
     throw err;
   }
 }

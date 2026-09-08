@@ -473,3 +473,8 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 
 .notice-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 2px; }
 .notice-list b { font-weight: 500; }
+
+/* ---------- print again ---------- */
+
+.table td.actions .inline-form { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 240px; }
+.table td.actions .inline-form .btn { margin-left: 0; }

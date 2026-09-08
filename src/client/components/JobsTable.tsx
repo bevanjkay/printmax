@@ -1,10 +1,40 @@
+import type { FormEvent } from "react";
 import type { JobDto } from "../../shared/types.js";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ACTIVE_JOB_STATES } from "../../shared/types.js";
 import { api } from "../api.js";
 import { formatDate, formatTime, useAsyncError } from "../util.js";
-import { IconInbox } from "./Icons.js";
-import { EmptyState, Notice, SkeletonRows, StateBadge } from "./ui.js";
+import { IconInbox, IconRefresh } from "./Icons.js";
+import { Button, EmptyState, Notice, SkeletonRows, StateBadge } from "./ui.js";
+
+/** Same document, same settings, a chosen number of copies: proof one, then run the rest. */
+function Reprint({ job, onDone, onError }: { job: JobDto; onDone: () => void; onError: (err: unknown) => void }) {
+  const [copies, setCopies] = useState(Number(job.options.copies ?? 1) || 1);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.reprintJob(job.id, copies);
+      onDone();
+    }
+    catch (err) {
+      onError(err);
+    }
+    finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="inline-form" onSubmit={submit}>
+      <input className="control" type="number" inputMode="numeric" min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={e => setCopies(Math.max(1, Number(e.target.value) || 1))} />
+      <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
+      <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+    </form>
+  );
+}
 
 interface Props {
   jobs: JobDto[] | null;
@@ -17,6 +47,7 @@ interface Props {
 
 export function JobsTable({ jobs, error, showUser, onChanged, emptyTitle = "No jobs yet", emptyDescription = "Jobs you print will show up here with what the printer said about them." }: Props) {
   const { error: actionError, fail, clear } = useAsyncError();
+  const [reprinting, setReprinting] = useState<number | null>(null);
   const seenRef = useRef<Set<number>>(new Set());
   const firstRenderRef = useRef(true);
 
@@ -85,9 +116,39 @@ export function JobsTable({ jobs, error, showUser, onChanged, emptyTitle = "No j
                         </td>
                         <td className="meta num created">{formatDate(job.createdAt)}</td>
                         <td className="actions">
-                          {(ACTIVE_JOB_STATES as readonly string[]).includes(job.state) && (
-                            <button type="button" className="btn btn-sm btn-danger" onClick={() => cancel(job.id)}>Cancel</button>
-                          )}
+                          {reprinting === job.id
+                            ? (
+                                <Reprint
+                                  job={job}
+                                  onDone={() => {
+                                    setReprinting(null);
+                                    onChanged();
+                                  }}
+                                  onError={(err) => {
+                                    setReprinting(null);
+                                    fail(err);
+                                  }}
+                                />
+                              )
+                            : (
+                                <>
+                                  {job.fileRetained && (
+                                    <Button
+                                      size="sm"
+                                      icon={<IconRefresh />}
+                                      onClick={() => {
+                                        clear();
+                                        setReprinting(job.id);
+                                      }}
+                                    >
+                                      Print again
+                                    </Button>
+                                  )}
+                                  {(ACTIVE_JOB_STATES as readonly string[]).includes(job.state) && (
+                                    <button type="button" className="btn btn-sm btn-danger" onClick={() => cancel(job.id)}>Cancel</button>
+                                  )}
+                                </>
+                              )}
                         </td>
                       </tr>
                     );

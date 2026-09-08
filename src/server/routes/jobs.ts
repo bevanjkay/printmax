@@ -8,7 +8,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { HttpError, notFound } from "../errors.js";
 import { sniffFormat, SUPPORTED_FORMATS } from "../format.js";
-import { cancelJob, canSeeJob, createJob, listJobs, requireJob, toDto } from "../jobs.js";
+import { cancelJob, canSeeJob, createJob, listJobs, reprintJob, requireJob, toDto } from "../jobs.js";
 import { idParam } from "./params.js";
 
 async function readHead(file: string, bytes = 16): Promise<Buffer> {
@@ -123,6 +123,12 @@ export function jobRoutes(app: FastifyInstance, db: Db, uploadDir: string): void
       await removeQuietly(finalPath);
       throw err;
     }
+  });
+
+  app.post("/api/jobs/:id/reprint", async (req, reply) => {
+    const body = (req.body ?? {}) as { copies?: unknown };
+    const job = await reprintJob(db, idParam(req.params), req.user!, { copies: body.copies });
+    return reply.code(201).send(toDto(db, job));
   });
 
   app.post("/api/jobs/:id/cancel", async (req) => {
