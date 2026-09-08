@@ -39,7 +39,7 @@ describe("aPI", () => {
 
   describe("setup and sessions", () => {
     it("reports that setup is needed and refuses protected routes", async () => {
-      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json()).toEqual({ user: null, needsSetup: true });
+      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json()).toEqual({ user: null, needsSetup: true, setupTokenRequired: false });
       expect((await app.inject({ method: "GET", url: "/api/printers" })).statusCode).toBe(401);
     });
 
@@ -352,5 +352,82 @@ describe("aPI", () => {
       expect(gone.statusCode).toBe(409);
       expect(gone.json().error).toMatch(/no longer on the server/);
     });
+  });
+});
+
+describe("hardening", () => {
+  async function fresh(opts: Partial<Parameters<typeof buildApp>[0]> = {}) {
+    const db = openDb(":memory:");
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-hard-"));
+    const app = await buildApp({ db, uploadDir: dir, ...opts });
+    return { app, db, close: async () => {
+      await app.close();
+      db.close();
+      await rm(dir, { recursive: true, force: true });
+    } };
+  }
+
+  it("requires the setup token when one is configured", async () => {
+    const { app, close } = await fresh({ setupToken: "s3cret-token" });
+    try {
+      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json()).toMatchObject({ needsSetup: true, setupTokenRequired: true });
+      const payload = { name: "Bevan", email: "admin@example.org", password: "correct horse" };
+      expect((await app.inject({ method: "POST", url: "/api/auth/setup", payload })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: "/api/auth/setup", payload: { ...payload, setupToken: "guess" } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: "/api/auth/setup", payload: { ...payload, setupToken: "s3cret-token" } })).statusCode).toBe(201);
+      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json().setupTokenRequired).toBe(false);
+    }
+    finally {
+      await close();
+    }
+  });
+
+  it("rate limits sign-in attempts per client", async () => {
+    const { app, close } = await fresh({ loginAttemptsPerMinute: 3 });
+    try {
+      await app.inject({ method: "POST", url: "/api/auth/setup", payload: { name: "Bevan", email: "admin@example.org", password: "correct horse" } });
+      const codes: number[] = [];
+      for (let i = 0; i < 4; i++)
+        codes.push((await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@example.org", password: "wrong" } })).statusCode);
+      expect(codes).toEqual([401, 401, 401, 429]);
+      const limited = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "admin@example.org", password: "correct horse" } });
+      expect(limited.statusCode).toBe(429);
+      expect(limited.json().error).toMatch(/too many attempts/);
+      expect((await app.inject({ method: "GET", url: "/api/health" })).statusCode).toBe(200);
+    }
+    finally {
+      await close();
+    }
+  });
+
+  it("sends a self-only content security policy and frame denial on every response", async () => {
+    const { app, close } = await fresh();
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/health" });
+      expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
+      expect(res.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+      expect(res.headers["content-security-policy"]).not.toContain("upgrade-insecure-requests");
+      expect(res.headers["x-frame-options"]).toBe("DENY");
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    }
+    finally {
+      await close();
+    }
+  });
+
+  it("only believes X-Forwarded-Proto when told to trust the proxy", async () => {
+    const payload = { name: "Bevan", email: "admin@example.org", password: "correct horse" };
+    const trusting = await fresh();
+    const direct = await fresh({ trustProxy: false });
+    try {
+      const behindProxy = await trusting.app.inject({ method: "POST", url: "/api/auth/setup", payload, headers: { "x-forwarded-proto": "https" } });
+      expect(behindProxy.cookies.find(c => c.name === "printmax_session")?.secure).toBe(true);
+      const spoofed = await direct.app.inject({ method: "POST", url: "/api/auth/setup", payload, headers: { "x-forwarded-proto": "https" } });
+      expect(spoofed.cookies.find(c => c.name === "printmax_session")?.secure).toBeUndefined();
+    }
+    finally {
+      await trusting.close();
+      await direct.close();
+    }
   });
 });
