@@ -66,8 +66,17 @@ const STATE_TONES: Record<string, Tone> = {
   "stopped": "danger",
 };
 
-/** Maps an IPP or local job/printer state to a badge tone; the word always travels with it. */
-export function stateTone(state: string): Tone {
+/** Reasons a job carries while things are normal; anything else on a stopped job is the printer's problem. */
+const BENIGN_REASONS = new Set(["none", "job-incoming", "job-queued", "job-queued-for-marker", "job-printing", "job-data-insufficient", "job-transforming"]);
+
+/**
+ * Maps an IPP or local job/printer state to a badge tone; the word always travels with it.
+ * Some printers pass every job through processing-stopped while taking it in, so that state
+ * is only amber when the printer gives a reason for the stop.
+ */
+export function stateTone(state: string, reasons: string[] = []): Tone {
+  if (state === "processing-stopped")
+    return reasons.some(r => !BENIGN_REASONS.has(r)) ? "warning" : "progress";
   return STATE_TONES[state] ?? "neutral";
 }
 

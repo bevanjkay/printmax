@@ -30,8 +30,8 @@ export function Badge({ tone = "neutral", plain, children }: { tone?: Tone; plai
   return <span className={`badge badge-${tone}${plain ? " badge-plain" : ""}`}>{children}</span>;
 }
 
-export function StateBadge({ state }: { state: string }) {
-  return <Badge tone={stateTone(state)}>{state.replace(/-/g, " ")}</Badge>;
+export function StateBadge({ state, reasons }: { state: string; reasons?: string[] }) {
+  return <Badge tone={stateTone(state, reasons)}>{state.replace(/-/g, " ")}</Badge>;
 }
 
 /* ---------- Field ---------- */

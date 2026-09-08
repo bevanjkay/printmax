@@ -150,7 +150,7 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                         <td className="primary">{job.filename}</td>
                         {showUser && <td className="user">{job.userName ?? "—"}</td>}
                         <td className="printer">{job.printerName ?? job.printerId}</td>
-                        <td className="state"><StateBadge state={job.state} /></td>
+                        <td className="state"><StateBadge state={job.state} reasons={job.stateReasons} /></td>
                         <td className="meta" title={detail || undefined}>
                           {detail || "—"}
                           {job.error && <div className="danger-text">{job.error}</div>}
