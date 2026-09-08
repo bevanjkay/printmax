@@ -23,7 +23,7 @@ export function JobsPage({ user, refreshKey }: Props) {
           <span className="help">Updates every few seconds.</span>
         </div>
       )}
-      <JobsTable jobs={jobs} error={error} showUser={all} onChanged={refresh} />
+      <JobsTable jobs={jobs} error={error} showUser={all} canShare={user.role === "admin"} onChanged={refresh} />
     </div>
   );
 }

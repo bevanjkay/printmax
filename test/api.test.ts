@@ -1,6 +1,6 @@
 import type { FastifyInstance, InjectOptions } from "fastify";
 import type { IppAttributes } from "../src/server/ipp/codec.js";
-import type { CapsChangeDto, FormField, JobDto, PresetDto, PresetExport, PresetImportResult, UserDto } from "../src/shared/types.js";
+import type { CapsChangeDto, FormField, JobDto, PresetDto, PresetExport, PresetImportResult, StoredJobDto, UserDto } from "../src/shared/types.js";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/server/app.js";
 import { diffCaps, listCapsChanges, recordCapsChange } from "../src/server/capsdiff.js";
 import { openDb } from "../src/server/db.js";
+import { multipart } from "./helpers/multipart.js";
 
 const fixture = readFileSync(new URL("../fixtures/ippeveprinter.json", import.meta.url), "utf8");
 
@@ -351,6 +352,88 @@ describe("aPI", () => {
       const gone = await app.inject(as(userCookie, { method: "POST", url: `/api/jobs/${id}/reprint`, payload: {} }));
       expect(gone.statusCode).toBe(409);
       expect(gone.json().error).toMatch(/no longer on the server/);
+    });
+  });
+  describe("library", () => {
+    const pdf = "%PDF-1.4\n%%EOF\n";
+    let sharedId: number;
+
+    it("stores an uploaded document with a preset for everyone", async () => {
+      const presets = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
+      const preset = presets.find(p => p.scope === "global")!;
+      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), presetId: String(preset.id), name: "Sunday bulletin", scope: "global" }, { name: "bulletin.pdf", content: pdf }) }));
+      expect(res.statusCode, res.body).toBe(201);
+      const entry = res.json<StoredJobDto>();
+      expect(entry).toMatchObject({ name: "Sunday bulletin", scope: "global", presetName: preset.name, filename: "bulletin.pdf", problems: [], printCount: 0, lastPrintedAt: null });
+      expect(entry.effectiveOptions).toEqual(preset.options);
+      sharedId = entry.id;
+
+      const mine = (await app.inject(as(userCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>();
+      expect(mine.map(e => e.name)).toEqual(["Sunday bulletin"]);
+      expect(mine[0]?.editable).toBe(false);
+      expect((await app.inject(as(userCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Mine now", scope: "global" } }))).statusCode).toBe(403);
+      expect((await app.inject(as(userCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), name: "Sneaky", scope: "global" }, { name: "x.pdf", content: pdf }) }))).statusCode).toBe(403);
+    });
+
+    it("prints an entry as a normal job with the chosen copies and counts it", async () => {
+      const res = await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { copies: 4 } }));
+      expect(res.statusCode, res.body).toBe(201);
+      const job = res.json<JobDto>();
+      expect(job).toMatchObject({ filename: "bulletin.pdf", state: "queued", fileRetained: true });
+      expect(job.options.copies).toBe(4);
+      expect(job.presetId).not.toBeNull();
+      const entry = (await app.inject(as(userCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>()[0]!;
+      expect(entry.printCount).toBe(1);
+      expect(entry.lastPrintedAt).not.toBeNull();
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { copies: 0 } }))).statusCode).toBe(400);
+    });
+
+    it("keeps a printed job for oneself, storing only what differed from its preset", async () => {
+      const user = (await app.inject(as(userCookie, { method: "GET", url: "/api/auth/me" }))).json().user as UserDto;
+      const presets = (await app.inject(as(userCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
+      const preset = presets.find(p => p.scope === "global")!;
+      const file = path.join(workDir, "flyer.pdf");
+      await writeFile(file, pdf);
+      const inserted = db.prepare("INSERT INTO jobs (user_id, printer_id, preset_id, filename, file_path, byte_size, document_format, options_final, state, created_at, completed_at) VALUES (?, ?, ?, 'flyer.pdf', ?, 14, 'application/pdf', ?, 'completed', ?, ?)")
+        .run(user.id, printerId, preset.id, file, JSON.stringify({ ...preset.options, copies: 3, media: "iso_a4_210x297mm" }), new Date().toISOString(), new Date().toISOString());
+      const jobId = Number(inserted.lastInsertRowid);
+
+      const res = await app.inject(as(userCookie, { method: "POST", url: `/api/library/from-job/${jobId}`, payload: { name: "Flyer", scope: "global" } }));
+      expect(res.statusCode, res.body).toBe(201);
+      const entry = res.json<StoredJobDto>();
+      expect(entry).toMatchObject({ name: "Flyer", scope: "user", presetId: preset.id, editable: true });
+      expect(entry.options).toEqual({ media: "iso_a4_210x297mm" });
+      expect(entry.effectiveOptions).toEqual({ ...preset.options, media: "iso_a4_210x297mm" });
+      expect((await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>().map(e => e.name)).toEqual(["Sunday bulletin"]);
+
+      const storedPath = (db.prepare("SELECT file_path FROM stored_jobs WHERE id = ?").get(entry.id) as { file_path: string }).file_path;
+      expect(storedPath).not.toBe(file);
+      expect(await readFile(storedPath, "utf8")).toBe(pdf);
+      expect((await app.inject(as(userCookie, { method: "DELETE", url: `/api/library/${entry.id}` }))).statusCode).toBe(204);
+      await expect(readFile(storedPath)).rejects.toThrow();
+    });
+
+    it("lets admins rename, re-point and delete shared entries", async () => {
+      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Bulletin", presetId: null, scope: "global", options: { sides: "one-sided" } } }));
+      expect(renamed.statusCode, renamed.body).toBe(200);
+      expect(renamed.json<StoredJobDto>()).toMatchObject({ name: "Bulletin", presetId: null, effectiveOptions: { sides: "one-sided" } });
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/${sharedId}` }))).statusCode).toBe(204);
+      expect((await app.inject(as(userCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json()).toEqual([]);
+    });
+  });
+
+  describe("roles", () => {
+    it("lets an admin promote and demote others but never themselves", async () => {
+      const users = (await app.inject(as(adminCookie, { method: "GET", url: "/api/users" }))).json<UserDto[]>();
+      const me = users.find(u => u.email === "admin@example.org")!;
+      const pat = users.find(u => u.email === "pat@example.org")!;
+      expect((await app.inject(as(userCookie, { method: "PUT", url: `/api/users/${me.id}/role`, payload: { role: "user" } }))).statusCode).toBe(403);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/users/${me.id}/role`, payload: { role: "user" } }))).statusCode).toBe(400);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/users/${pat.id}/role`, payload: { role: "boss" } }))).statusCode).toBe(400);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/users/${pat.id}/role`, payload: { role: "admin" } }))).json<UserDto>().role).toBe("admin");
+      expect((await app.inject(as(userCookie, { method: "GET", url: "/api/users" }))).statusCode).toBe(200);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/users/${pat.id}/role`, payload: { role: "user" } }))).json<UserDto>().role).toBe("user");
+      expect((await app.inject(as(userCookie, { method: "GET", url: "/api/users" }))).statusCode).toBe(403);
     });
   });
 });

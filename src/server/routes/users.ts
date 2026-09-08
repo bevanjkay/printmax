@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
-import { createUser, deleteUser, listUsers, setPassword, toUserDto } from "../auth.js";
+import { createUser, deleteUser, listUsers, setPassword, setRole, toUserDto } from "../auth.js";
 import { HttpError } from "../errors.js";
 import { idParam } from "./params.js";
 
@@ -17,6 +17,15 @@ export function userRoutes(app: FastifyInstance, db: Db): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     setPassword(db, idParam(req.params), body.password);
     return reply.code(204).send();
+  });
+
+  /** Promote or demote. Not your own account, so an instance always keeps a signed-in admin. */
+  app.put("/api/users/:id/role", async (req) => {
+    const id = idParam(req.params);
+    if (id === req.user!.id)
+      throw new HttpError(400, "you cannot change your own role");
+    const body = (req.body ?? {}) as { role?: unknown };
+    return toUserDto(setRole(db, id, body.role));
   });
 
   app.delete("/api/users/:id", async (req, reply) => {

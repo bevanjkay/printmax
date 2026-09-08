@@ -259,7 +259,7 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
           <h2>Recent jobs</h2>
           <Button variant="ghost" size="sm" onClick={onGoToJobs}>All jobs</Button>
         </div>
-        <JobsTable jobs={jobs} error={error} onChanged={refresh} emptyTitle="Nothing printed yet" emptyDescription="Your jobs appear here as soon as you print." />
+        <JobsTable canShare={isAdmin} jobs={jobs} error={error} onChanged={refresh} emptyTitle="Nothing printed yet" emptyDescription="Your jobs appear here as soon as you print." />
       </div>
     </div>
   );
