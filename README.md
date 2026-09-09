@@ -49,7 +49,7 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
 | `STORED_DIR` | `/data/stored` | Library documents, kept until deleted |
 | `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
-| `TRUST_PROXY` | `true` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
+| `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
 
 The app runs as the unprivileged `node` user (uid 1000). The container starts as root only to
 hand `/data` to that user, so a bind-mounted host directory or a volume created by an older image
@@ -65,8 +65,10 @@ network prints the URI.
 
 ### Reverse proxy
 
-The app trusts `X-Forwarded-*` headers and marks the session cookie `Secure` when the request
-arrived over HTTPS, so put it behind Caddy, Traefik, nginx or a Cloudflare Tunnel as usual. Two
+The app ignores `X-Forwarded-*` headers by default. Behind Caddy, Traefik, nginx or a Cloudflare
+Tunnel, set `TRUST_PROXY` to the proxy IP or CIDR (a comma-separated list is accepted), and prevent
+clients from reaching the backend directly. Only use `true` when every path to the backend passes
+through a proxy that sanitizes forwarded headers. Trusted HTTPS requests receive a `Secure` session cookie. Two
 things to check on the proxy: allow request bodies up to `MAX_UPLOAD_MB` (nginx:
 `client_max_body_size`), and forward `X-Forwarded-Proto`. Nothing in the app needs a path prefix
 or WebSockets.
@@ -76,7 +78,7 @@ or WebSockets.
 - Every printing, preset and printer route needs a signed-in session; sessions are random tokens
   stored hashed, `HttpOnly`, `SameSite=Lax`, and `Secure` behind HTTPS.
 - Sign-in and setup are rate limited to 10 attempts per client IP per minute (from
-  `X-Forwarded-For` when `TRUST_PROXY` is on, so set it to `false` if nothing sits in front).
+  trusted `X-Forwarded-For` when `TRUST_PROXY` is configured).
 - The first-run setup page needs the token printed in the log at startup, so an instance exposed
   before its admin exists cannot be claimed by a passer-by.
 - Responses carry a self-only Content Security Policy and the usual Helmet headers; the app loads
@@ -88,9 +90,29 @@ or WebSockets.
 - Passwords are hashed with scrypt.
 - Printer credentials (for devices that require HTTP basic auth on IPP) are stored unencrypted in
   the SQLite database. Treat the data volume accordingly.
-- IPPS connections accept self-signed printer certificates.
+- IPPS connections verify certificates; private certificates need an explicitly configured trust root.
+
+### Printer TLS and conversion limits
+
+IPPS/HTTPS printer connections verify the certificate and hostname. For a private CA or self-signed
+printer certificate, mount the trusted PEM certificate read-only and set `NODE_EXTRA_CA_CERTS` to
+its container path (for example `/certs/printer-ca.pem`) in the service environment, then restart.
+Obtain that certificate through a trusted channel; its subject alternative name must match the
+printer URI. Existing self-signed IPPS printers need this configuration after upgrading.
+
+PostScript mode invokes Ghostscript's PDF interpreter directly and stops conversion after 60 seconds
+or 64 MiB of generated output. Cancellation terminates an active conversion. These bounds are separate
+from the upload size limit. Temporary upload files abandoned by a crash are removed after 24 hours;
+in-flight uploads are excluded.
+
+Shared library entries follow only shared presets. Selecting a personal preset when saving a shared
+entry saves a snapshot. If a linked preset becomes private or moves to another printer, the entry
+uses its previously saved snapshot and stops exposing the live preset's name and settings.
 
 ## Develop
+
+The TLS regression test uses the `openssl` CLI. Printer and conversion tests also use
+`ippeveprinter` and `gs` when installed.
 
 ```sh
 pnpm install

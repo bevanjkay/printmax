@@ -128,6 +128,30 @@ describe("pPD options as a form and in validation", () => {
 });
 
 describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
+  it("parses input only as PDF, including files retained before header validation was tightened", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-forged-pdf-"));
+    const file = path.join(dir, "forged (document).pdf");
+    try {
+      await writeFile(file, "%PDF\n{} loop\n");
+      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow("Unrecoverable error");
+      // A valid-looking header is also only a comment in PostScript. It must not be executed.
+      await writeFile(file, "%PDF-1.7\n{} loop\n");
+      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow("Unrecoverable error");
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds output and conversion time, and honors cancellation", async () => {
+    const file = new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname;
+    await expect(pdfToPostScript(file, { maxOutputBytes: 1024 })).rejects.toThrow("output size limit");
+    await expect(pdfToPostScript(file, { timeoutMs: 1 })).rejects.toThrow("timed out");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(pdfToPostScript(file, { signal: controller.signal })).rejects.toThrow("canceled");
+  });
+
   it("shrinks and centres each page inside the printer's margins when asked", async () => {
     const pdf = new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname;
     const box = async (ps: Buffer) => {

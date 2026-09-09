@@ -55,6 +55,7 @@ export const LocalJobState = {
 const LOCAL_TERMINAL = new Set<string>([LocalJobState.failed, LocalJobState.unknown, ...TERMINAL_JOB_STATES]);
 export const MAX_SUBMIT_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 2000;
+const conversions = new WeakMap<Db, Map<number, AbortController>>();
 
 /** IPP statuses that mean "not right now" rather than "never": busy with another job, temporary error, paused intake. */
 const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([0x0502, 0x0505, 0x0506, 0x0507]);
@@ -167,6 +168,8 @@ function requestingUserName(db: Db, job: JobRow): string {
 
 /** Sends one queued job to its printer. Transport failures back off and retry; printer rejections fail immediately. */
 export async function submitJob(db: Db, job: JobRow): Promise<void> {
+  if (getJob(db, job.id)?.state === "canceled")
+    return;
   const printer = getPrinter(db, job.printer_id);
   if (!printer)
     return fail(db, job, "printer was deleted");
@@ -182,10 +185,16 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
     return fail(db, job, problems.join("; "));
 
   const userName = requestingUserName(db, job);
+  const controller = new AbortController();
+  if (!conversions.has(db))
+    conversions.set(db, new Map());
+  conversions.get(db)!.set(job.id, controller);
   try {
     const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
-      ? await postScriptDocument(job, profile.ppd, options, caps, userName)
+      ? await postScriptDocument(job, profile.ppd, options, caps, userName, controller.signal)
       : { data: await readFile(job.file_path), documentFormat: job.document_format, jobAttributes: buildJobAttributes(options, caps) };
+    if (controller.signal.aborted)
+      return;
     const status = await printJob(targetFor(printer), {
       data,
       documentFormat,
@@ -207,6 +216,8 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
     );
   }
   catch (err) {
+    if (controller.signal.aborted)
+      return;
     const message = (err as Error).message;
     const attempts = job.attempts + 1;
     const transient = err instanceof IppStatusError && TRANSIENT_STATUSES.has(err.status);
@@ -219,15 +230,18 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
     }
     fail(db, job, message);
   }
+  finally {
+    conversions.get(db)!.delete(job.id);
+  }
 }
 
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
-async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string) {
+async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal) {
   const chosen = ppdChoices(options);
   const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
   const keepMargins = options[FIT_TO_MARGINS] === true || options[FIT_TO_MARGINS] === "true";
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
-  const document = await pdfToPostScript(job.file_path!, { ...(paper ? { paper } : {}), ...(margins ? { margins } : {}) });
+  const document = await pdfToPostScript(job.file_path!, { signal, ...(paper ? { paper } : {}), ...(margins ? { margins } : {}) });
   const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document });
   // Named PostScript where the printer lists it (auto-sensing printers cannot sniff past the PJL header); raw otherwise.
   const formats = attrValues<string>(caps, "document-format-supported");
@@ -319,6 +333,7 @@ export async function cancelJob(db: Db, id: number, user: UserRow): Promise<JobR
   }
   else {
     db.prepare("UPDATE jobs SET state = 'canceled', next_attempt_at = NULL, completed_at = ? WHERE id = ?").run(now(), id);
+    conversions.get(db)?.get(id)?.abort();
   }
   return requireJob(db, id);
 }
@@ -339,17 +354,23 @@ export interface JobWorkerOptions {
 /** Drives submission retries, state polling and scheduled capability refreshes. `tick` is exposed so tests can drive it. */
 export function startJobWorker(db: Db, opts: JobWorkerOptions): JobWorker {
   let running = false;
+  let stopped = false;
   let lastCapsRefresh = 0;
 
   async function tick(): Promise<void> {
-    if (running)
+    if (running || stopped)
       return;
     running = true;
     try {
       const due = db.prepare("SELECT * FROM jobs WHERE state IN (?, ?) AND next_attempt_at <= ? ORDER BY id")
         .all(LocalJobState.queued, LocalJobState.retrying, now()) as unknown as JobRow[];
-      for (const job of due)
+      for (const job of due) {
+        if (stopped)
+          return;
         await submitJob(db, job);
+      }
+      if (stopped)
+        return;
 
       const active = db.prepare("SELECT * FROM jobs WHERE ipp_job_id IS NOT NULL AND state NOT IN ('completed', 'canceled', 'aborted', 'failed', 'unknown') ORDER BY id")
         .all() as unknown as JobRow[];
@@ -378,7 +399,12 @@ export function startJobWorker(db: Db, opts: JobWorkerOptions): JobWorker {
   const timer = setInterval(() => void tick(), opts.intervalMs);
   return {
     tick,
-    stop: () => clearInterval(timer),
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+      for (const controller of conversions.get(db)?.values() ?? [])
+        controller.abort();
+    },
   };
 }
 

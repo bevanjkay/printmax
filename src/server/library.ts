@@ -74,9 +74,18 @@ function parseJson(text: string): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>;
 }
 
-/** The preset as it is today, or its snapshot if it has gone, with the entry's overrides on top. */
-export function effectiveOptions(db: Db, row: StoredJobRow): Record<string, unknown> {
+/** A shared entry may only follow a shared preset; personal entries may follow their owner's. */
+function linkedPreset(db: Db, row: StoredJobRow) {
   const preset = row.preset_id === null ? undefined : getPreset(db, row.preset_id);
+  return preset && preset.printer_id === row.printer_id
+    && (preset.scope === "global" || (row.scope === "user" && preset.owner_id === row.owner_id))
+    ? preset
+    : undefined;
+}
+
+/** Use the explicitly saved snapshot when the live preset is no longer accessible. */
+export function effectiveOptions(db: Db, row: StoredJobRow): Record<string, unknown> {
+  const preset = linkedPreset(db, row);
   const base = preset ? parseJson(preset.options) : parseJson(row.preset_options);
   return { ...base, ...parseJson(row.options) };
 }
@@ -149,7 +158,7 @@ export function createStoredJob(db: Db, input: { printerId: unknown; presetId?: 
   const result = db.prepare(`
     INSERT INTO stored_jobs (printer_id, preset_id, name, scope, owner_id, filename, file_path, byte_size, document_format, options, preset_options, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(parsed.printerId, parsed.presetId, parsed.name, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
+  `).run(parsed.printerId, preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
   return requireStoredJob(db, Number(result.lastInsertRowid));
 }
 
@@ -195,7 +204,7 @@ export function updateStoredJob(db: Db, id: number, input: { presetId?: unknown;
   db.prepare(`
     UPDATE stored_jobs SET preset_id = ?, name = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
     WHERE id = ?
-  `).run(parsed.presetId, parsed.name, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
+  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
   return requireStoredJob(db, id);
 }
 
@@ -232,7 +241,7 @@ export async function printStoredJob(db: Db, id: number, input: { copies?: unkno
       throw new HttpError(400, "copies must be a whole number of at least 1");
     options.copies = copies;
   }
-  const preset = row.preset_id === null ? undefined : getPreset(db, row.preset_id);
+  const preset = linkedPreset(db, row);
   const filePath = path.join(uploadDir, `${randomUUID()}${path.extname(row.file_path)}`);
   await copyFile(row.file_path, filePath);
   try {
@@ -257,7 +266,7 @@ export async function printStoredJob(db: Db, id: number, input: { copies?: unkno
 
 export function toStoredJobDto(db: Db, row: StoredJobRow, user: UserRow): StoredJobDto {
   const printer = db.prepare("SELECT * FROM printers WHERE id = ?").get(row.printer_id) as unknown as PrinterRow | undefined;
-  const preset = row.preset_id === null ? undefined : getPreset(db, row.preset_id);
+  const preset = linkedPreset(db, row);
   return {
     id: row.id,
     printerId: row.printer_id,
