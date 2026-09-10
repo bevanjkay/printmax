@@ -71,18 +71,19 @@ export const api = {
   },
 
   listLibrary: (printerId?: number) => request<StoredJobDto[]>(`/api/library${printerId ? `?printerId=${printerId}` : ""}`),
-  addToLibrary: (input: { printerId: number; presetId: number | null; name: string; scope: "global" | "user"; file: File }) => {
+  addToLibrary: (input: { printerId: number; presetId: number | null; name: string; group: string; scope: "global" | "user"; file: File }) => {
     const form = new FormData();
     form.append("printerId", String(input.printerId));
     if (input.presetId)
       form.append("presetId", String(input.presetId));
     form.append("name", input.name);
+    form.append("group", input.group);
     form.append("scope", input.scope);
     form.append("file", input.file);
     return request<StoredJobDto>("/api/library", { method: "POST", body: form });
   },
   keepJob: (jobId: number, input: { name: string; scope: "global" | "user" }) => request<StoredJobDto>(`/api/library/from-job/${jobId}`, json("POST", input)),
-  updateStoredJob: (id: number, input: { name: string; presetId: number | null; scope: "global" | "user"; options: Options }) => request<StoredJobDto>(`/api/library/${id}`, json("PUT", input)),
+  updateStoredJob: (id: number, input: { name: string; presetId: number | null; group: string; scope: "global" | "user"; options: Options }) => request<StoredJobDto>(`/api/library/${id}`, json("PUT", input)),
   replaceStoredFile: (id: number, file: File) => {
     const form = new FormData();
     form.append("file", file);

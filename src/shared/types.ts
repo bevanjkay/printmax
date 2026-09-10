@@ -137,6 +137,8 @@ export interface StoredJobDto {
   presetId: number | null;
   presetName: string | null;
   name: string;
+  /** The section it is filed under in the Library, or null for ungrouped. */
+  group: string | null;
   scope: "global" | "user";
   ownerId: number | null;
   filename: string;
