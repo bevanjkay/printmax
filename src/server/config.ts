@@ -1,5 +1,6 @@
 import path from "node:path";
 import process from "node:process";
+import { DEFAULT_MAX_OUTPUT_BYTES } from "./ppd/ghostscript.js";
 
 export interface Config {
   port: number;
@@ -14,6 +15,8 @@ export interface Config {
   capsRefreshHours: number;
   discoveryTimeoutMs: number;
   maxUploadBytes: number;
+  /** Ceiling on the PostScript a conversion may produce, which for image-heavy pages far exceeds the PDF. */
+  maxPostScriptBytes: number;
   staticDir: string;
   /** Required by the first-run setup page; generated and logged at startup when unset. */
   setupToken: string | null;
@@ -53,6 +56,7 @@ export function loadConfig(env = process.env): Config {
     capsRefreshHours: int("CAPS_REFRESH_HOURS", 24),
     discoveryTimeoutMs: int("DISCOVERY_TIMEOUT_MS", 3000),
     maxUploadBytes: int("MAX_UPLOAD_MB", 200) * 1024 * 1024,
+    maxPostScriptBytes: int("MAX_POSTSCRIPT_MB", DEFAULT_MAX_OUTPUT_BYTES / (1024 * 1024)) * 1024 * 1024,
     staticDir: path.resolve(env.STATIC_DIR ?? path.join(import.meta.dirname, "..", "client")),
     setupToken: env.SETUP_TOKEN || null,
     trustProxy: trustProxyFrom(env.TRUST_PROXY),

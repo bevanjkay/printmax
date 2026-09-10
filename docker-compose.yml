@@ -11,6 +11,7 @@ services:
       CAPS_REFRESH_HOURS: ${CAPS_REFRESH_HOURS:-24}
       DISCOVERY_TIMEOUT_MS: ${DISCOVERY_TIMEOUT_MS:-3000}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      MAX_POSTSCRIPT_MB: ${MAX_POSTSCRIPT_MB:-512}
     volumes:
       - data:/data
     # DNS-SD discovery needs multicast, which the default bridge network blocks.

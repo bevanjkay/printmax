@@ -72,21 +72,30 @@ export interface AssembleInput {
   document: Buffer;
 }
 
-/** Inserts the setup block before the first page, after any prolog the converter wrote. */
+/** Where a DSC comment opens a line, which is the only place it means anything. */
+function lineStarting(document: Buffer, marker: string): number {
+  if (document.subarray(0, marker.length).toString("latin1") === marker)
+    return 0;
+  const at = document.indexOf(`\n${marker}`, 0, "latin1");
+  return at < 0 ? -1 : at + 1;
+}
+
+/**
+ * Inserts the setup block before the first page, after any prolog the converter wrote. The document
+ * is spliced as bytes: a booklet's PostScript is far too large to pass through a JavaScript string.
+ */
 export function assemblePostScript(input: AssembleInput): Buffer {
-  const ps = input.document.toString("latin1");
-  const setup = `%%BeginSetup\n${setupBlock(input.ppd, input.chosen)}%%EndSetup\n`;
-  const anchors = [/^%%Page:/m, /^%%Trailer/m];
+  const { document } = input;
+  const setup = Buffer.from(`%%BeginSetup\n${setupBlock(input.ppd, input.chosen)}%%EndSetup\n`, "latin1");
+  const header = Buffer.from(jclHeader(input.ppd, input.chosen, input.jobName, input.userName), "latin1");
+  const trailer = Buffer.from(input.ppd.jcl?.end ?? "", "latin1");
   let at = -1;
-  for (const re of anchors) {
-    const m = re.exec(ps);
-    if (m) {
-      at = m.index;
+  for (const marker of ["%%Page:", "%%Trailer"]) {
+    at = lineStarting(document, marker);
+    if (at >= 0)
       break;
-    }
   }
-  const body = at < 0 ? ps + setup : ps.slice(0, at) + setup + ps.slice(at);
-  const header = jclHeader(input.ppd, input.chosen, input.jobName, input.userName);
-  const trailer = input.ppd.jcl?.end ?? "";
-  return Buffer.from(header + body + trailer, "latin1");
+  return at < 0
+    ? Buffer.concat([header, document, setup, trailer])
+    : Buffer.concat([header, document.subarray(0, at), setup, document.subarray(at), trailer]);
 }

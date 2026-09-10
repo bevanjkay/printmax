@@ -45,6 +45,7 @@ async function main(): Promise<void> {
   const worker = startJobWorker(db, {
     intervalMs: config.pollIntervalMs,
     capsRefreshHours: config.capsRefreshHours,
+    maxPostScriptBytes: config.maxPostScriptBytes,
     onError: err => app.log.error(err, "job worker error"),
     onInfo: (message, data) => app.log.warn(data ?? {}, message),
   });

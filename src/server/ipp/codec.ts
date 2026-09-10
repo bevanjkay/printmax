@@ -181,7 +181,11 @@ class Reader {
   }
 }
 
-export function encode(msg: IppMessage): Buffer {
+/**
+ * The attributes and the document as separate buffers, so a print job's megabytes are written to
+ * the socket where they lie rather than copied into one contiguous request.
+ */
+export function encodeParts(msg: IppMessage): Buffer[] {
   const w = new Writer();
   w.u8(msg.version[0]);
   w.u8(msg.version[1]);
@@ -195,9 +199,11 @@ export function encode(msg: IppMessage): Buffer {
       writeAttribute(w, name, attr);
   }
   w.u8(GroupTag.end);
-  if (msg.data)
-    w.raw(msg.data);
-  return w.toBuffer();
+  return msg.data ? [w.toBuffer(), msg.data] : [w.toBuffer()];
+}
+
+export function encode(msg: IppMessage): Buffer {
+  return Buffer.concat(encodeParts(msg));
 }
 
 function writeAttribute(w: Writer, name: string, attr: IppAttribute): void {
