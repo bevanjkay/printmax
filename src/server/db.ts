@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 export type Db = DatabaseSync;
 
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE users (
     id INTEGER PRIMARY KEY,
@@ -108,6 +108,27 @@ const MIGRATIONS: string[] = [
   `,
   `
   ALTER TABLE stored_jobs ADD COLUMN group_name TEXT;
+  `,
+  `
+  CREATE TABLE library_groups (
+    id INTEGER PRIMARY KEY,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX library_groups_name ON library_groups(printer_id, name COLLATE NOCASE);
+  ALTER TABLE stored_jobs ADD COLUMN group_id INTEGER REFERENCES library_groups(id) ON DELETE SET NULL;
+  INSERT INTO library_groups (printer_id, name, position, created_at)
+    SELECT printer_id, name, ROW_NUMBER() OVER (PARTITION BY printer_id ORDER BY name COLLATE NOCASE), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    FROM (
+      SELECT printer_id, MIN(group_name) AS name FROM stored_jobs
+      WHERE group_name IS NOT NULL GROUP BY printer_id, group_name COLLATE NOCASE
+    );
+  UPDATE stored_jobs SET group_id = (
+    SELECT id FROM library_groups g WHERE g.printer_id = stored_jobs.printer_id AND g.name = stored_jobs.group_name COLLATE NOCASE
+  ) WHERE group_name IS NOT NULL;
+  ALTER TABLE stored_jobs DROP COLUMN group_name;
   `,
 ];
 

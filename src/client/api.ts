@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -71,19 +71,25 @@ export const api = {
   },
 
   listLibrary: (printerId?: number) => request<StoredJobDto[]>(`/api/library${printerId ? `?printerId=${printerId}` : ""}`),
-  addToLibrary: (input: { printerId: number; presetId: number | null; name: string; group: string; scope: "global" | "user"; file: File }) => {
+  listLibraryGroups: (printerId: number) => request<LibraryGroupDto[]>(`/api/library/groups?printerId=${printerId}`),
+  createLibraryGroup: (printerId: number, name: string) => request<LibraryGroupDto>("/api/library/groups", json("POST", { printerId, name })),
+  renameLibraryGroup: (id: number, name: string) => request<LibraryGroupDto>(`/api/library/groups/${id}`, json("PUT", { name })),
+  reorderLibraryGroups: (printerId: number, ids: number[]) => request<LibraryGroupDto[]>("/api/library/groups/order", json("PUT", { printerId, ids })),
+  deleteLibraryGroup: (id: number) => request<void>(`/api/library/groups/${id}`, json("DELETE")),
+  addToLibrary: (input: { printerId: number; presetId: number | null; name: string; groupId: number | null; scope: "global" | "user"; file: File }) => {
     const form = new FormData();
     form.append("printerId", String(input.printerId));
     if (input.presetId)
       form.append("presetId", String(input.presetId));
     form.append("name", input.name);
-    form.append("group", input.group);
+    if (input.groupId !== null)
+      form.append("groupId", String(input.groupId));
     form.append("scope", input.scope);
     form.append("file", input.file);
     return request<StoredJobDto>("/api/library", { method: "POST", body: form });
   },
   keepJob: (jobId: number, input: { name: string; scope: "global" | "user" }) => request<StoredJobDto>(`/api/library/from-job/${jobId}`, json("POST", input)),
-  updateStoredJob: (id: number, input: { name: string; presetId: number | null; group: string; scope: "global" | "user"; options: Options }) => request<StoredJobDto>(`/api/library/${id}`, json("PUT", input)),
+  updateStoredJob: (id: number, input: { name: string; presetId: number | null; groupId: number | null; scope: "global" | "user"; options: Options }) => request<StoredJobDto>(`/api/library/${id}`, json("PUT", input)),
   replaceStoredFile: (id: number, file: File) => {
     const form = new FormData();
     form.append("file", file);

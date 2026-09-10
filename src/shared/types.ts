@@ -129,6 +129,16 @@ export interface PresetImportResult {
   skipped: Array<{ name: string; reason: string }>;
 }
 
+/** A section of the Library. Admins keep the list; everyone files documents into it. */
+export interface LibraryGroupDto {
+  id: number;
+  printerId: number;
+  name: string;
+  position: number;
+  /** How many documents the asking user can see in this group. */
+  documentCount: number;
+}
+
 /** A document kept for good, paired with a preset, so printing it again is one click. */
 export interface StoredJobDto {
   id: number;
@@ -137,7 +147,9 @@ export interface StoredJobDto {
   presetId: number | null;
   presetName: string | null;
   name: string;
-  /** The section it is filed under in the Library, or null for ungrouped. */
+  /** The group it is filed under, or null for ungrouped. */
+  groupId: number | null;
+  /** The group's name, carried so the list can section itself without a second lookup. */
   group: string | null;
   scope: "global" | "user";
   ownerId: number | null;

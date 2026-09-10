@@ -1,6 +1,6 @@
 import type { FastifyInstance, InjectOptions } from "fastify";
 import type { IppAttributes } from "../src/server/ipp/codec.js";
-import type { CapsChangeDto, FormField, JobDto, PresetDto, PresetExport, PresetImportResult, StoredJobDto, UserDto } from "../src/shared/types.js";
+import type { CapsChangeDto, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetImportResult, StoredJobDto, UserDto } from "../src/shared/types.js";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -357,14 +357,33 @@ describe("aPI", () => {
   describe("library", () => {
     const pdf = "%PDF-1.4\n%%EOF\n";
     let sharedId: number;
+    let weeklyId: number;
+
+    const addGroup = async (cookie: string, name: string) =>
+      app.inject(as(cookie, { method: "POST", url: "/api/library/groups", payload: { printerId, name } }));
+    const addDocument = async (name: string, groupId?: number) =>
+      (await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), name, scope: "global", ...(groupId === undefined ? {} : { groupId: String(groupId) }) }, { name: `${name}.pdf`, content: pdf }) }))).json<StoredJobDto>();
+
+    it("keeps the group list per printer, for admins only", async () => {
+      const created = await addGroup(adminCookie, "  Weekly  ");
+      expect(created.statusCode, created.body).toBe(201);
+      expect(created.json<LibraryGroupDto>()).toMatchObject({ name: "Weekly", printerId, position: 1, documentCount: 0 });
+      weeklyId = created.json<LibraryGroupDto>().id;
+
+      expect((await addGroup(adminCookie, "weekly")).statusCode).toBe(409);
+      expect((await addGroup(adminCookie, " ")).statusCode).toBe(400);
+      expect((await addGroup(userCookie, "Mine")).statusCode).toBe(403);
+      expect((await app.inject(as(userCookie, { method: "DELETE", url: `/api/library/groups/${weeklyId}` }))).statusCode).toBe(403);
+      expect((await app.inject(as(userCookie, { method: "GET", url: `/api/library/groups?printerId=${printerId}` }))).json<LibraryGroupDto[]>().map(g => g.name)).toEqual(["Weekly"]);
+    });
 
     it("stores an uploaded document with a preset for everyone", async () => {
       const presets = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
       const preset = presets.find(p => p.scope === "global")!;
-      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), presetId: String(preset.id), name: "Sunday bulletin", group: " Weekly ", scope: "global" }, { name: "bulletin.pdf", content: pdf }) }));
+      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), presetId: String(preset.id), name: "Sunday bulletin", groupId: String(weeklyId), scope: "global" }, { name: "bulletin.pdf", content: pdf }) }));
       expect(res.statusCode, res.body).toBe(201);
       const entry = res.json<StoredJobDto>();
-      expect(entry).toMatchObject({ name: "Sunday bulletin", group: "Weekly", scope: "global", presetName: preset.name, filename: "bulletin.pdf", problems: [], printCount: 0, lastPrintedAt: null });
+      expect(entry).toMatchObject({ name: "Sunday bulletin", groupId: weeklyId, group: "Weekly", scope: "global", presetName: preset.name, filename: "bulletin.pdf", problems: [], printCount: 0, lastPrintedAt: null });
       expect(entry.effectiveOptions).toEqual(preset.options);
       sharedId = entry.id;
 
@@ -413,24 +432,39 @@ describe("aPI", () => {
       await expect(readFile(storedPath)).rejects.toThrow();
     });
 
-    it("lists entries by group with the ungrouped ones last, and a blank group clears it", async () => {
-      const add = async (name: string, group: string) => (await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), name, group, scope: "global" }, { name: `${name}.pdf`, content: pdf }) }))).json<StoredJobDto>();
-      const notices = await add("Notices", "");
-      const roster = await add("Roster", "Admin");
+    it("lists documents in the group order the admin chose, ungrouped last", async () => {
+      const office = (await addGroup(adminCookie, "Office")).json<LibraryGroupDto>();
+      const roster = await addDocument("Roster", office.id);
+      const notices = await addDocument("Notices");
+      const filed = async () => (await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>().map(e => [e.group, e.name]);
+      expect(await filed()).toEqual([["Weekly", "Sunday bulletin"], ["Office", "Roster"], [null, "Notices"]]);
 
-      const listed = (await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>();
-      expect(listed.map(e => [e.group, e.name])).toEqual([["Admin", "Roster"], ["Weekly", "Sunday bulletin"], [null, "Notices"]]);
+      const reordered = await app.inject(as(adminCookie, { method: "PUT", url: "/api/library/groups/order", payload: { printerId, ids: [office.id, weeklyId] } }));
+      expect(reordered.statusCode, reordered.body).toBe(200);
+      expect(reordered.json<LibraryGroupDto[]>().map(g => g.name)).toEqual(["Office", "Weekly"]);
+      expect(await filed()).toEqual([["Office", "Roster"], ["Weekly", "Sunday bulletin"], [null, "Notices"]]);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: "/api/library/groups/order", payload: { printerId, ids: [office.id] } }))).statusCode).toBe(400);
 
-      const cleared = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${roster.id}`, payload: { name: "Roster", group: "  ", scope: "global", options: {} } }));
-      expect(cleared.json<StoredJobDto>().group).toBeNull();
-      for (const id of [notices.id, roster.id])
+      for (const id of [roster.id, notices.id])
         expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/${id}` }))).statusCode).toBe(204);
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/groups/${office.id}` }))).statusCode).toBe(204);
+    });
+
+    it("renames a group in place and leaves its documents behind when it goes", async () => {
+      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/groups/${weeklyId}`, payload: { name: "Sundays" } }));
+      expect(renamed.statusCode, renamed.body).toBe(200);
+      expect(renamed.json<LibraryGroupDto>()).toMatchObject({ name: "Sundays", documentCount: 1 });
+      expect((await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>()[0]).toMatchObject({ group: "Sundays" });
+
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/groups/${weeklyId}` }))).statusCode).toBe(204);
+      const loose = (await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>()[0]!;
+      expect(loose).toMatchObject({ name: "Sunday bulletin", groupId: null, group: null });
     });
 
     it("lets admins rename, re-point and delete shared entries", async () => {
-      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Bulletin", presetId: null, group: "Sunday", scope: "global", options: { sides: "one-sided" } } }));
+      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Bulletin", presetId: null, scope: "global", options: { sides: "one-sided" } } }));
       expect(renamed.statusCode, renamed.body).toBe(200);
-      expect(renamed.json<StoredJobDto>()).toMatchObject({ name: "Bulletin", group: "Sunday", presetId: null, effectiveOptions: { sides: "one-sided" } });
+      expect(renamed.json<StoredJobDto>()).toMatchObject({ name: "Bulletin", group: null, presetId: null, effectiveOptions: { sides: "one-sided" } });
       expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/${sharedId}` }))).statusCode).toBe(204);
       expect((await app.inject(as(userCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json()).toEqual([]);
     });

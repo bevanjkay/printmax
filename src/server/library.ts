@@ -13,6 +13,7 @@ import path from "node:path";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { canSeeJob, createJob, requireJob } from "./jobs.js";
+import { getGroup } from "./library-groups.js";
 import { canUsePreset, getPreset } from "./presets.js";
 import { profileFor, requirePrinter } from "./printers.js";
 import { validateJobOptions } from "./validation.js";
@@ -22,7 +23,7 @@ export interface StoredJobRow {
   printer_id: number;
   preset_id: number | null;
   name: string;
-  group_name: string | null;
+  group_id: number | null;
   scope: "global" | "user";
   owner_id: number | null;
   filename: string;
@@ -55,12 +56,13 @@ export function requireStoredJob(db: Db, id: number): StoredJobRow {
   return row;
 }
 
-/** Grouped entries come first, alphabetically; the ungrouped ones trail them. */
+/** Entries come in their group's order, ungrouped ones last, so the page can section them in one pass. */
 export function listStoredJobs(db: Db, user: UserRow, printerId?: number): StoredJobRow[] {
   return db.prepare(`
-    SELECT * FROM stored_jobs
-    WHERE (scope = 'global' OR owner_id = ?) AND (? IS NULL OR printer_id = ?)
-    ORDER BY group_name IS NULL, group_name COLLATE NOCASE, scope ASC, name
+    SELECT s.* FROM stored_jobs s
+    LEFT JOIN library_groups g ON g.id = s.group_id
+    WHERE (s.scope = 'global' OR s.owner_id = ?) AND (? IS NULL OR s.printer_id = ?)
+    ORDER BY s.group_id IS NULL, g.position, g.name COLLATE NOCASE, s.scope ASC, s.name
   `).all(user.id, printerId ?? null, printerId ?? null) as unknown as StoredJobRow[];
 }
 
@@ -110,7 +112,7 @@ export interface StoredJobInput {
   printerId: unknown;
   presetId?: unknown;
   name: unknown;
-  group?: unknown;
+  groupId?: unknown;
   scope?: unknown;
   options?: unknown;
 }
@@ -119,7 +121,7 @@ interface Parsed {
   printerId: number;
   presetId: number | null;
   name: string;
-  group: string | null;
+  groupId: number | null;
   scope: "global" | "user";
   options: Record<string, unknown>;
 }
@@ -146,8 +148,16 @@ function parseInput(db: Db, input: StoredJobInput, user: UserRow): Parsed {
   const options = input.options ?? {};
   if (typeof options !== "object" || options === null || Array.isArray(options))
     throw new HttpError(400, "options must be an object");
-  const group = typeof input.group === "string" && input.group.trim() !== "" ? input.group.trim() : null;
-  return { printerId, presetId, name: input.name.trim(), group, scope, options: options as Record<string, unknown> };
+  let groupId: number | null = null;
+  if (input.groupId !== undefined && input.groupId !== null && input.groupId !== "") {
+    groupId = Number(input.groupId);
+    const group = Number.isInteger(groupId) ? getGroup(db, groupId) : undefined;
+    if (!group)
+      throw notFound("library group");
+    if (group.printer_id !== printerId)
+      throw new HttpError(400, "group belongs to a different printer");
+  }
+  return { printerId, presetId, name: input.name.trim(), groupId, scope, options: options as Record<string, unknown> };
 }
 
 /** Refuses an entry that could not print as it stands, the same bar presets are held to. */
@@ -169,9 +179,9 @@ export function createStoredJob(db: Db, input: StoredJobInput, file: StoredFile,
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
   const stamp = now();
   const result = db.prepare(`
-    INSERT INTO stored_jobs (printer_id, preset_id, name, group_name, scope, owner_id, filename, file_path, byte_size, document_format, options, preset_options, created_at, updated_at)
+    INSERT INTO stored_jobs (printer_id, preset_id, name, group_id, scope, owner_id, filename, file_path, byte_size, document_format, options, preset_options, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(parsed.printerId, preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.group, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
+  `).run(parsed.printerId, preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.groupId, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
   return requireStoredJob(db, Number(result.lastInsertRowid));
 }
 
@@ -215,9 +225,9 @@ export function updateStoredJob(db: Db, id: number, input: Omit<StoredJobInput, 
   assertPrintable(db, parsed, existing.document_format);
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
   db.prepare(`
-    UPDATE stored_jobs SET preset_id = ?, name = ?, group_name = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
+    UPDATE stored_jobs SET preset_id = ?, name = ?, group_id = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
     WHERE id = ?
-  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.group, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
+  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.groupId, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
   return requireStoredJob(db, id);
 }
 
@@ -287,7 +297,8 @@ export function toStoredJobDto(db: Db, row: StoredJobRow, user: UserRow): Stored
     presetId: preset?.id ?? null,
     presetName: preset?.name ?? null,
     name: row.name,
-    group: row.group_name,
+    groupId: row.group_id,
+    group: row.group_id === null ? null : getGroup(db, row.group_id)?.name ?? null,
     scope: row.scope,
     ownerId: row.owner_id,
     filename: row.filename,
