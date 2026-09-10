@@ -95,6 +95,11 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
     return await readFile(out);
   }
   finally {
-    await rm(dir, { recursive: true, force: true });
+    try {
+      await rm(dir, { recursive: true, force: true });
+    }
+    catch {
+      // Best-effort cleanup; don't mask conversion errors.
+    }
   }
 }
