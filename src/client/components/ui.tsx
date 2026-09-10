@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import type { Tone } from "../util.js";
 import { useRef, useState } from "react";
 
@@ -32,6 +32,42 @@ export function Badge({ tone = "neutral", plain, children }: { tone?: Tone; plai
 
 export function StateBadge({ state, reasons }: { state: string; reasons?: string[] }) {
   return <Badge tone={stateTone(state, reasons)}>{state.replace(/-/g, " ")}</Badge>;
+}
+
+/* ---------- Number input ---------- */
+
+type NumberInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "min" | "max" | "onChange" | "type"> & {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+};
+
+/**
+ * Holds what is being typed rather than the clamped number, so the field can be emptied and a new
+ * figure typed; an empty or out-of-range field settles back to a legal value when it loses focus.
+ */
+export function NumberInput({ value, min, max, onChange, className = "control", ...rest }: NumberInputProps) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const clamp = (n: number) => Math.min(max, Math.max(min, n));
+
+  return (
+    <input
+      {...rest}
+      className={className}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      value={typed ?? String(value)}
+      onChange={(e) => {
+        setTyped(e.target.value);
+        const n = Number(e.target.value);
+        onChange(e.target.value.trim() === "" || !Number.isFinite(n) ? min : clamp(n));
+      }}
+      onBlur={() => setTyped(null)}
+    />
+  );
 }
 
 /* ---------- Field ---------- */

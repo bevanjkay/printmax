@@ -1,7 +1,7 @@
 import type { FormChoice, FormField } from "../../shared/types.js";
 import { useState } from "react";
 import { IconChevron, IconPlus } from "./Icons.js";
-import { Field } from "./ui.js";
+import { Field, NumberInput } from "./ui.js";
 
 export type OptionValues = Record<string, unknown>;
 
@@ -31,7 +31,7 @@ function Stepper({ value, min, max, disabled, onChange }: { value: number; min: 
   return (
     <div className="stepper">
       <button type="button" disabled={disabled || value <= min} aria-label="Fewer copies" onClick={() => onChange(clamp(value - 1))}>−</button>
-      <input className="control" type="number" inputMode="numeric" min={min} max={max} disabled={disabled} value={value} onChange={e => onChange(clamp(Number(e.target.value)))} aria-label="Copies" />
+      <NumberInput min={min} max={max} disabled={disabled} value={value} onChange={onChange} aria-label="Copies" />
       <button type="button" disabled={disabled || value >= max} aria-label="More copies" onClick={() => onChange(clamp(value + 1))}><IconPlus /></button>
     </div>
   );

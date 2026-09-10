@@ -1,11 +1,11 @@
 import type { FormEvent } from "react";
-import type { FormField, PresetDto, PrinterDto, StoredJobDto, UserDto } from "../../shared/types.js";
+import type { FormField, LibraryGroupDto, PresetDto, PrinterDto, StoredJobDto, UserDto } from "../../shared/types.js";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
-import { IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
-import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
+import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
+import { Badge, Button, Dropzone, EmptyState, Field, Notice, NumberInput, Panel, SkeletonRows } from "../components/ui.js";
 import { formatDate, summariseOptions, useAsyncError } from "../util.js";
 
 interface Props {
@@ -22,20 +22,104 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function documentCount(n: number): string {
+  return n === 1 ? "1 document" : `${n} documents`;
+}
+
+interface GroupFieldProps {
+  printerId: number;
+  groups: LibraryGroupDto[];
+  canManage: boolean;
+  value: number | null;
+  onChange: (groupId: number | null) => void;
+  onCreated: () => Promise<void>;
+  onError: (err: unknown) => void;
+}
+
+/** The list an admin keeps, with a way to add to it without leaving the document being filed. */
+function GroupField({ printerId, groups, canManage, value, onChange, onCreated, onError }: GroupFieldProps) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function create() {
+    setBusy(true);
+    try {
+      const created = await api.createLibraryGroup(printerId, name.trim());
+      await onCreated();
+      onChange(created.id);
+      setName("");
+      setCreating(false);
+    }
+    catch (err) {
+      onError(err);
+    }
+    finally {
+      setBusy(false);
+    }
+  }
+
+  if (creating) {
+    return (
+      <Field label="New group">
+        <div className="inline-form">
+          <input
+            className="control"
+            autoFocus
+            value={name}
+            placeholder="e.g. Sunday"
+            aria-label="New group name"
+            onChange={e => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter")
+                return;
+              e.preventDefault();
+              if (name.trim() !== "")
+                void create();
+            }}
+          />
+          <Button size="sm" variant="primary" loading={busy} disabled={name.trim() === ""} onClick={() => void create()}>Add</Button>
+          <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>Cancel</Button>
+        </div>
+      </Field>
+    );
+  }
+
+  return (
+    <Field label="Group" hint={groups.length > 0 ? "Documents are listed under their group." : canManage ? "No groups yet. Add one to file documents under it." : "No groups yet; an admin keeps the list."}>
+      <select
+        className="control"
+        value={value ?? ""}
+        onChange={(e) => {
+          if (e.target.value === "new")
+            setCreating(true);
+          else
+            onChange(e.target.value === "" ? null : Number(e.target.value));
+        }}
+      >
+        <option value="">No group</option>
+        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        {canManage && <option value="new">+ Add new…</option>}
+      </select>
+    </Field>
+  );
+}
+
 interface EditorProps {
   user: UserDto;
   printer: PrinterDto;
   presets: PresetDto[];
-  groups: string[];
+  groups: LibraryGroupDto[];
   entry: StoredJobDto | null;
-  onSaved: () => void;
+  onGroupsChanged: () => Promise<void>;
+  onSaved: (groupId: number | null) => void;
   onCancel: () => void;
 }
 
 /** New entries take a file; editing changes the name, group, preset and who can use it. */
-function Editor({ user, printer, presets, groups, entry, onSaved, onCancel }: EditorProps) {
+function Editor({ user, printer, presets, groups, entry, onGroupsChanged, onSaved, onCancel }: EditorProps) {
   const [name, setName] = useState(entry?.name ?? "");
-  const [group, setGroup] = useState(entry?.group ?? "");
+  const [groupId, setGroupId] = useState<number | null>(entry?.groupId ?? null);
   const [presetId, setPresetId] = useState<number | null>(entry?.presetId ?? presets[0]?.id ?? null);
   const [scope, setScope] = useState<"global" | "user">(entry?.scope ?? (user.role === "admin" ? "global" : "user"));
   const [file, setFile] = useState<File | null>(null);
@@ -48,10 +132,10 @@ function Editor({ user, printer, presets, groups, entry, onSaved, onCancel }: Ed
     setBusy(true);
     try {
       if (entry)
-        await api.updateStoredJob(entry.id, { name, presetId, group, scope, options: entry.options });
+        await api.updateStoredJob(entry.id, { name, presetId, groupId, scope, options: entry.options });
       else if (file)
-        await api.addToLibrary({ printerId: printer.id, presetId, name, group, scope, file });
-      onSaved();
+        await api.addToLibrary({ printerId: printer.id, presetId, name, groupId, scope, file });
+      onSaved(groupId);
     }
     catch (err) {
       fail(err);
@@ -87,12 +171,15 @@ function Editor({ user, printer, presets, groups, entry, onSaved, onCancel }: Ed
             </Field>
           </div>
           <div className="two-col">
-            <Field label="Group" hint="Optional. Documents are listed under their group.">
-              <input className="control" list="library-groups" value={group} onChange={e => setGroup(e.target.value)} placeholder="e.g. Sunday" />
-              <datalist id="library-groups">
-                {groups.map(g => <option key={g} value={g} />)}
-              </datalist>
-            </Field>
+            <GroupField
+              printerId={printer.id}
+              groups={groups}
+              canManage={user.role === "admin"}
+              value={groupId}
+              onChange={setGroupId}
+              onCreated={onGroupsChanged}
+              onError={fail}
+            />
             {user.role === "admin" && (
               <Field label="Who can use it">
                 <select className="control" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
@@ -106,6 +193,98 @@ function Editor({ user, printer, presets, groups, entry, onSaved, onCancel }: Ed
         </div>
       </Panel>
     </form>
+  );
+}
+
+interface GroupManagerProps {
+  printer: PrinterDto;
+  groups: LibraryGroupDto[];
+  onChanged: () => Promise<void>;
+  onClose: () => void;
+  onError: (err: unknown) => void;
+}
+
+/** Admins keep the list here: add, rename, order it, or drop a group and leave its documents behind. */
+function GroupManager({ printer, groups, onChanged, onClose, onError }: GroupManagerProps) {
+  const [adding, setAdding] = useState("");
+  const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await action();
+      await onChanged();
+    }
+    catch (err) {
+      onError(err);
+    }
+    finally {
+      setBusy(false);
+    }
+  }
+
+  function move(index: number, delta: number) {
+    const ids = groups.map(g => g.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(index + delta, 0, moved!);
+    void run(() => api.reorderLibraryGroups(printer.id, ids));
+  }
+
+  return (
+    <Panel title="Groups" actions={<Button size="sm" onClick={onClose}>Done</Button>}>
+      <div className="panel-body">
+        <ul className="group-list">
+          {groups.map((group, i) => (
+            <li key={group.id}>
+              {renaming?.id === group.id
+                ? (
+                    <form
+                      className="inline-form"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        await run(() => api.renameLibraryGroup(group.id, renaming.name.trim()));
+                        setRenaming(null);
+                      }}
+                    >
+                      <input className="control" autoFocus aria-label={`Rename ${group.name}`} value={renaming.name} onChange={e => setRenaming({ id: group.id, name: e.target.value })} />
+                      <Button type="submit" size="sm" variant="primary" loading={busy} disabled={renaming.name.trim() === ""}>Save</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+                    </form>
+                  )
+                : (
+                    <>
+                      <span className="primary">{group.name}</span>
+                      <span className="meta">{documentCount(group.documentCount)}</span>
+                      <div className="spacer" />
+                      <Button size="sm" className="btn-icon" aria-label={`Move ${group.name} up`} disabled={busy || i === 0} icon={<IconChevron className="icon chev-up" />} onClick={() => move(i, -1)} />
+                      <Button size="sm" className="btn-icon" aria-label={`Move ${group.name} down`} disabled={busy || i === groups.length - 1} icon={<IconChevron className="icon chev-down" />} onClick={() => move(i, 1)} />
+                      <Button size="sm" onClick={() => setRenaming({ id: group.id, name: group.name })}>Rename</Button>
+                      <ConfirmButton
+                        size="sm"
+                        label="Delete"
+                        confirmLabel={group.documentCount > 0 ? `Delete? ${documentCount(group.documentCount)} become ungrouped` : "Delete group?"}
+                        onConfirm={() => void run(() => api.deleteLibraryGroup(group.id))}
+                      />
+                    </>
+                  )}
+            </li>
+          ))}
+          {groups.length === 0 && <li className="meta">No groups yet. Documents stay in one flat list until you add one.</li>}
+        </ul>
+        <form
+          className="inline-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await run(() => api.createLibraryGroup(printer.id, adding.trim()));
+            setAdding("");
+          }}
+        >
+          <input className="control" aria-label="New group name" placeholder="e.g. Sunday" value={adding} onChange={e => setAdding(e.target.value)} />
+          <Button type="submit" size="sm" variant="primary" icon={<IconPlus />} loading={busy} disabled={adding.trim() === ""}>Add group</Button>
+        </form>
+      </div>
+    </Panel>
   );
 }
 
@@ -130,24 +309,42 @@ function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <input className="control" type="number" inputMode="numeric" min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={e => setCopies(Math.max(1, Number(e.target.value) || 1))} />
+      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
   );
 }
 
-/** Entries arrive grouped and in order, so one pass keeps the groups the server decided on. */
-function sections(entries: StoredJobDto[]): Array<[string | null, StoredJobDto[]]> {
-  const out: Array<[string | null, StoredJobDto[]]> = [];
+interface Section {
+  key: string;
+  name: string;
+  items: StoredJobDto[];
+}
+
+function sectionKey(groupId: number | null): string {
+  return groupId === null ? "ungrouped" : `group-${groupId}`;
+}
+
+/**
+ * One section per group, in the order the admin put them in, with the ungrouped documents last.
+ * An empty group still shows so it can be filed into; a search hides whatever it did not match.
+ */
+function sections(groups: LibraryGroupDto[], entries: StoredJobDto[], searching: boolean): Section[] {
+  const bucket = new Map<number | null, StoredJobDto[]>();
   for (const entry of entries) {
-    const last = out[out.length - 1];
-    if (last && last[0] === entry.group)
-      last[1].push(entry);
+    const items = bucket.get(entry.groupId);
+    if (items)
+      items.push(entry);
     else
-      out.push([entry.group, [entry]]);
+      bucket.set(entry.groupId, [entry]);
   }
-  return out;
+  const filed = groups.map(g => ({ key: sectionKey(g.id), name: g.name, items: bucket.get(g.id) ?? [] }));
+  const loose = { key: sectionKey(null), name: "Ungrouped", items: bucket.get(null) ?? [] };
+  return [
+    ...(searching ? filed.filter(s => s.items.length > 0) : filed),
+    ...(loose.items.length > 0 ? [loose] : []),
+  ];
 }
 
 function matches(entry: StoredJobDto, query: string): boolean {
@@ -158,13 +355,16 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
   const [printerId, setPrinterId] = useState<number | null>(null);
   const printer = printers.find(p => p.id === printerId) ?? printers[0];
   const [entries, setEntries] = useState<StoredJobDto[] | null>(null);
+  const [groups, setGroups] = useState<LibraryGroupDto[]>([]);
   const [presets, setPresets] = useState<PresetDto[]>([]);
   const [fields, setFields] = useState<FormField[]>([]);
   const [editing, setEditing] = useState<StoredJobDto | null | "new">(null);
+  const [managing, setManaging] = useState(false);
   const [printing, setPrinting] = useState<number | null>(null);
   const [replacing, setReplacing] = useState<number | null>(null);
   const [printed, setPrinted] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const { error, fail, clear } = useAsyncError();
 
@@ -172,8 +372,9 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
     if (!printer)
       return;
     try {
-      const [e, p, f] = await Promise.all([api.listLibrary(printer.id), api.listPresets(printer.id), api.getForm(printer.id)]);
+      const [e, g, p, f] = await Promise.all([api.listLibrary(printer.id), api.listLibraryGroups(printer.id), api.listPresets(printer.id), api.getForm(printer.id)]);
       setEntries(e);
+      setGroups(g);
       setPresets(p);
       setFields(f);
       clear();
@@ -224,10 +425,12 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
 
   const primaryNames = fields.filter(f => isPrimaryOption(f.name)).map(f => f.name);
   const trimmed = query.trim().toLowerCase();
-  const shown = (entries ?? []).filter(e => trimmed === "" || matches(e, trimmed));
-  const grouped = sections(shown);
-  const showGroups = grouped.some(([label]) => label !== null);
-  const groups = [...new Set((entries ?? []).map(e => e.group).filter(g => g !== null))];
+  const searching = trimmed !== "";
+  const shown = (entries ?? []).filter(e => !searching || matches(e, trimmed));
+  const grouped = sections(groups, shown, searching);
+  // Sections start closed, and a search opens what it found until the reader says otherwise.
+  const isOpen = (section: Section) => open[section.key] ?? searching;
+  const allOpen = grouped.every(isOpen);
 
   return (
     <div className="stack">
@@ -240,7 +443,9 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           onChange={(e) => {
             setPrinterId(Number(e.target.value));
             setEditing(null);
+            setManaging(false);
             setPrinted(null);
+            setOpen({});
           }}
         >
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -249,7 +454,13 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           <IconSearch className="icon" />
           <input className="control" type="search" aria-label="Search the library" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
+        {groups.length > 0 && (
+          <Button variant="ghost" onClick={() => setOpen(Object.fromEntries(grouped.map(s => [s.key, !allOpen])))}>
+            {allOpen ? "Collapse all" : "Expand all"}
+          </Button>
+        )}
         <div className="spacer" />
+        {user.role === "admin" && <Button onClick={() => setManaging(m => !m)}>Groups</Button>}
         <Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")} disabled={editing === "new"}>Add document</Button>
       </div>
       <input
@@ -269,6 +480,16 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
       {error && <Notice tone="error">{error}</Notice>}
       {printed && <Notice tone="success">{printed}</Notice>}
 
+      {managing && (
+        <GroupManager
+          printer={printer}
+          groups={groups}
+          onChanged={refresh}
+          onClose={() => setManaging(false)}
+          onError={fail}
+        />
+      )}
+
       {editing !== null && (
         <Editor
           key={editing === "new" ? "new" : editing.id}
@@ -277,8 +498,10 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           presets={presets}
           groups={groups}
           entry={editing === "new" ? null : editing}
-          onSaved={() => {
+          onGroupsChanged={refresh}
+          onSaved={(groupId) => {
             setEditing(null);
+            setOpen(o => ({ ...o, [sectionKey(groupId)]: true }));
             void refresh();
           }}
           onCancel={() => setEditing(null)}
@@ -319,17 +542,28 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                       </tr>
                     </thead>
                     <tbody>
-                      {grouped.map(([label, items]) => (
-                        <Fragment key={label ?? ""}>
-                          {showGroups && (
+                      {grouped.map(section => (
+                        <Fragment key={section.key}>
+                          {groups.length > 0 && (
                             <tr className="group-row">
                               <th colSpan={6} scope="colgroup">
-                                {label ?? "Ungrouped"}
-                                <span className="count">{items.length}</span>
+                                <button
+                                  type="button"
+                                  className="group-toggle"
+                                  aria-expanded={isOpen(section)}
+                                  onClick={() => setOpen(o => ({ ...o, [section.key]: !isOpen(section) }))}
+                                >
+                                  <IconChevron className="icon chev" />
+                                  {section.name}
+                                  <span className="count">{section.items.length}</span>
+                                </button>
                               </th>
                             </tr>
                           )}
-                          {items.map(entry => (
+                          {isOpen(section) && section.items.length === 0 && (
+                            <tr><td className="meta" colSpan={6}>Nothing filed here yet.</td></tr>
+                          )}
+                          {(groups.length === 0 || isOpen(section)) && section.items.map(entry => (
                             <tr key={entry.id}>
                               <td>
                                 <div className="primary">{entry.name}</div>

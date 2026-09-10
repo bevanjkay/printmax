@@ -157,11 +157,13 @@ can be kept from the Jobs list with **Keep**. Files live under `/data/stored` an
 by retention; the preset is followed by reference, so improving it improves every document that
 uses it.
 
-Each entry can name a group — "Sunday", "Kids", "Office" — and the list is filed under those
-headings, ungrouped documents last. A group is free text on the entry, picked from the ones
-already in use, so there is nothing to set up before you use one and nothing left over when the
-last document leaves a group. The search box above the list covers the name, the file, the group
-and the preset.
+Documents are filed into groups — "Sunday", "Kids", "Office". Admins keep each printer's group
+list, in the order they choose, from **Groups** on the Library page or with **+ Add new** while
+filing a document; everyone else picks from that list. The library shows one collapsible section
+per group with a count, collapsed to start with and ungrouped documents last, so a long library
+reads as a handful of headings. Deleting a group keeps its documents and leaves them ungrouped.
+The search box above the list covers the name, the file, the group and the preset, and opens the
+sections holding whatever it found.
 
 ## Preset files
 

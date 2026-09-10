@@ -5,7 +5,7 @@ import { ACTIVE_JOB_STATES } from "../../shared/types.js";
 import { api } from "../api.js";
 import { formatDate, formatTime, useAsyncError } from "../util.js";
 import { IconInbox, IconLibrary, IconRefresh } from "./Icons.js";
-import { Button, EmptyState, Notice, SkeletonRows, StateBadge } from "./ui.js";
+import { Button, EmptyState, Notice, NumberInput, SkeletonRows, StateBadge } from "./ui.js";
 
 /** Same document, same settings, a chosen number of copies: proof one, then run the rest. */
 function Reprint({ job, onDone, onError }: { job: JobDto; onDone: () => void; onError: (err: unknown) => void }) {
@@ -29,7 +29,7 @@ function Reprint({ job, onDone, onError }: { job: JobDto; onDone: () => void; on
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <input className="control" type="number" inputMode="numeric" min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={e => setCopies(Math.max(1, Number(e.target.value) || 1))} />
+      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
     </form>

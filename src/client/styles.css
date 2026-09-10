@@ -506,3 +506,24 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 .table tr.group-row th { padding: 14px 16px 6px; background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; white-space: normal; border-bottom: 1px solid var(--border); }
 .table tbody tr.group-row:first-child th { padding-top: 10px; }
 .table tr.group-row .count { margin-left: 8px; color: var(--text-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* ---------- library group sections ---------- */
+
+.table tr.group-row th { padding: 0; }
+.group-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 12px 16px 8px; border: 0; background: none;
+  font: inherit; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
+  text-align: left; cursor: pointer;
+}
+.group-toggle:hover { color: var(--text); }
+.group-toggle .chev { color: var(--text-3); transition: transform var(--dur) var(--ease); }
+.group-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.group-toggle .count { margin-left: auto; color: var(--text-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+.group-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.group-list li { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: var(--fs-sm); }
+.group-list li .spacer { flex: 1; }
+.group-list .btn + .btn { margin-left: 0; }
+.btn .chev-up { transform: rotate(-90deg); }
+.btn .chev-down { transform: rotate(90deg); }

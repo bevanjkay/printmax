@@ -9,6 +9,7 @@
 - Some printers (the Toshiba e-STUDIO fixture) only take tray and paper type inside `media-col`. Validate and evaluate constraints on the flat map (`buildAttributes`); fold `media`/`media-source`/`media-type` into `media-col` only when building Print-Job attributes (`buildJobAttributes`).
 - Develop and test against `ippeveprinter` (ships with CUPS; `/usr/bin/ippeveprinter` on macOS, `cups-ipp-utils` on Debian). The end-to-end test starts it itself and skips if it is missing.
 - Fixtures in `fixtures/` are verbatim Get-Printer-Attributes dumps from `pnpm dump-caps <uri>`; never hand-edit them.
+- `MIGRATIONS` in `src/server/db.ts` is exported so `test/migrations.test.ts` can build a database at the previous version and run the new step against real rows; give any migration that moves data such a test.
 - Validation: `pnpm lint`, `pnpm check`, `pnpm test`, `pnpm build` (see `.github/workflows/checks.yml`).
 - pnpm 11's default `trustPolicy: no-downgrade` rejects `semver@6.3.1` (pinned by `@babel/core`); the exclusion lives in `pnpm-workspace.yaml`. Copy that file into any Docker stage that runs `pnpm install`, or the install fails there too.
 - UI: category-standard product UI played straight, at Linear's level of craft (Bevan's standing preference). Tokens and every component style live in `src/client/styles.css`; shared components in `src/client/components/ui.tsx`; icons are authored 16px SVG in `Icons.tsx`. No web fonts or CDNs: assets must work on an isolated LAN.
