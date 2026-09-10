@@ -2,7 +2,7 @@ import type { IppGroup, IppMessage } from "./codec.js";
 import { Buffer } from "node:buffer";
 import http from "node:http";
 import https from "node:https";
-import { attrValue, decode, encode, firstGroup, GroupTag } from "./codec.js";
+import { attrValue, decode, encodeParts, firstGroup, GroupTag } from "./codec.js";
 import { statusName } from "./constants.js";
 
 export interface PrinterTarget {
@@ -73,12 +73,12 @@ function nextRequestId(): number {
   return requestCounter;
 }
 
-function send(url: URL, body: Buffer, target: PrinterTarget): Promise<Buffer> {
+function send(url: URL, body: Buffer[], target: PrinterTarget): Promise<Buffer> {
   const isTls = url.protocol === "https:";
   const transport = isTls ? https : http;
   const headers: Record<string, string> = {
     "Content-Type": "application/ipp",
-    "Content-Length": String(body.length),
+    "Content-Length": String(body.reduce((total, part) => total + part.length, 0)),
     "Accept": "application/ipp",
   };
   if (target.username)
@@ -106,7 +106,9 @@ function send(url: URL, body: Buffer, target: PrinterTarget): Promise<Buffer> {
       req.destroy(new Error("timeout"));
     });
     req.on("error", err => reject(new IppTransportError(`${url.host}: ${err.message}`, { cause: err })));
-    req.end(body);
+    for (const part of body.slice(0, -1))
+      req.write(part);
+    req.end(body.at(-1));
   });
 }
 
@@ -119,7 +121,7 @@ export async function ippRequest(
 ): Promise<IppMessage> {
   const url = toHttpUrl(target.uri);
   const requestId = nextRequestId();
-  const body = encode({ version, code: operation, requestId, groups, ...(data ? { data } : {}) });
+  const body = encodeParts({ version, code: operation, requestId, groups, ...(data ? { data } : {}) });
   const raw = await send(url, body, target);
   let msg: IppMessage;
   try {

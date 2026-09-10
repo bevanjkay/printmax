@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
+import { randomFillSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,6 +18,37 @@ const execFileAsync = promisify(execFile);
 const text = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 const ppd = parsePpd(text);
 const byKey = Object.fromEntries(ppd.options.map(o => [o.key, o]));
+
+/** A one-page PDF holding an unfiltered image of random bytes: small to build, incompressible in PostScript. */
+function noisyImagePdf(width: number, height: number): Buffer {
+  const pixels = Buffer.allocUnsafe(width * height * 3);
+  for (let at = 0; at < pixels.length; at += 65_536)
+    randomFillSync(pixels, at, Math.min(65_536, pixels.length - at));
+  const content = "q 595 0 0 842 0 0 cm /Im0 Do Q";
+  const bodies = [
+    Buffer.from("<< /Type /Catalog /Pages 2 0 R >>", "latin1"),
+    Buffer.from("<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "latin1"),
+    Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>", "latin1"),
+    Buffer.concat([
+      Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, "latin1"),
+      pixels,
+      Buffer.from("\nendstream", "latin1"),
+    ]),
+    Buffer.from(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "latin1"),
+  ];
+  const parts = [Buffer.from("%PDF-1.7\n", "latin1")];
+  const offsets: number[] = [];
+  let at = parts[0]!.length;
+  bodies.forEach((body, i) => {
+    const object = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), body, Buffer.from("\nendobj\n", "latin1")]);
+    offsets.push(at);
+    at += object.length;
+    parts.push(object);
+  });
+  const xref = offsets.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  parts.push(Buffer.from(`xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${bodies.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(parts);
+}
 
 describe("parsePpd", () => {
   it("reads model, JCL wrapper with hex escapes, groups, defaults and order", () => {
@@ -80,6 +112,18 @@ describe("assembling the driver's job", () => {
     expect(block).toContain("%%BeginFeature: *BookletPaperSize A4");
     expect(block).not.toContain("%%BeginFeature: *Duplex None");
     expect(setupBlock(ppd, {})).toContain("%%BeginFeature: *Duplex None");
+  });
+
+  it("keeps the document's bytes intact, including a %%Page: that is only image data", () => {
+    const image = Buffer.from([0x80, 0xFF, 0x25, 0x25, 0x50, 0x61, 0x67, 0x65, 0x3A, 0x00, 0xFE]);
+    const doc = Buffer.concat([
+      Buffer.from("%!PS-Adobe-3.0\n%%EndProlog\n", "latin1"),
+      image,
+      Buffer.from("\n%%Page: 1 1\nshowpage\n%%Trailer\n%%EOF\n", "latin1"),
+    ]);
+    const out = assemblePostScript({ ppd, chosen, jobName: "a.pdf", userName: "pat", document: doc });
+    expect(out.includes(image)).toBe(true);
+    expect(out.indexOf(Buffer.from("%%BeginSetup"))).toBeGreaterThan(out.indexOf(image));
   });
 
   it("wraps the document: JCL, then PostScript with the setup block before the first page", () => {
@@ -177,6 +221,21 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
     const ratio = (b: number[]) => (b[2]! - b[0]!) / (b[3]! - b[1]!);
     expect(ratio(kept)).toBeCloseTo(ratio(edge), 2);
   });
+
+  it("converts a document whose PostScript runs well past the old 64 MB in-memory cap", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-large-pdf-"));
+    try {
+      const file = path.join(dir, "photos.pdf");
+      await writeFile(file, noisyImagePdf(3200, 4800));
+      const document = await pdfToPostScript(file);
+      expect(document.length).toBeGreaterThan(64 * 1024 * 1024);
+      const job = assemblePostScript({ ppd, chosen: {}, jobName: "photos.pdf", userName: "pat", document });
+      expect(job.length).toBeGreaterThan(document.length);
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   it("converts a PDF to DSC PostScript with one %%Page per page, forcing the paper when asked", async () => {
     const ps = (await pdfToPostScript(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname, { paper: { width: 595, height: 842 } })).toString("latin1");

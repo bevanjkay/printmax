@@ -47,6 +47,7 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `CAPS_REFRESH_HOURS` | `24` | Re-fetch printer capabilities older than this; `0` disables |
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
+| `MAX_POSTSCRIPT_MB` | `512` | Ceiling on the PostScript one conversion may produce; image-heavy pages cost a few MB each, whatever the PDF weighed |
 | `STORED_DIR` | `/data/stored` | Library documents, kept until deleted |
 | `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |

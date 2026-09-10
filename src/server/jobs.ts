@@ -167,7 +167,7 @@ function requestingUserName(db: Db, job: JobRow): string {
 }
 
 /** Sends one queued job to its printer. Transport failures back off and retry; printer rejections fail immediately. */
-export async function submitJob(db: Db, job: JobRow): Promise<void> {
+export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = {}): Promise<void> {
   if (getJob(db, job.id)?.state === "canceled")
     return;
   const printer = getPrinter(db, job.printer_id);
@@ -191,7 +191,7 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
   conversions.get(db)!.set(job.id, controller);
   try {
     const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
-      ? await postScriptDocument(job, profile.ppd, options, caps, userName, controller.signal)
+      ? await postScriptDocument(job, profile.ppd, options, caps, userName, controller.signal, limits)
       : { data: await readFile(job.file_path), documentFormat: job.document_format, jobAttributes: buildJobAttributes(options, caps) };
     if (controller.signal.aborted)
       return;
@@ -236,12 +236,17 @@ export async function submitJob(db: Db, job: JobRow): Promise<void> {
 }
 
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
-async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal) {
+async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
   const chosen = ppdChoices(options);
   const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
   const keepMargins = options[FIT_TO_MARGINS] === true || options[FIT_TO_MARGINS] === "true";
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
-  const document = await pdfToPostScript(job.file_path!, { signal, ...(paper ? { paper } : {}), ...(margins ? { margins } : {}) });
+  const document = await pdfToPostScript(job.file_path!, {
+    signal,
+    ...(limits.maxPostScriptBytes ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
+    ...(paper ? { paper } : {}),
+    ...(margins ? { margins } : {}),
+  });
   const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document });
   // Named PostScript where the printer lists it (auto-sensing printers cannot sniff past the PJL header); raw otherwise.
   const formats = attrValues<string>(caps, "document-format-supported");
@@ -343,7 +348,12 @@ export interface JobWorker {
   stop: () => void;
 }
 
-export interface JobWorkerOptions {
+export interface ConversionLimits {
+  /** Ceiling on the PostScript one conversion may produce; the converter's own default when unset. */
+  maxPostScriptBytes?: number;
+}
+
+export interface JobWorkerOptions extends ConversionLimits {
   intervalMs: number;
   /** Re-fetch printer capabilities older than this; 0 disables the schedule. */
   capsRefreshHours?: number;
@@ -367,7 +377,7 @@ export function startJobWorker(db: Db, opts: JobWorkerOptions): JobWorker {
       for (const job of due) {
         if (stopped)
           return;
-        await submitJob(db, job);
+        await submitJob(db, job, opts);
       }
       if (stopped)
         return;
