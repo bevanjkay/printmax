@@ -22,6 +22,7 @@ export interface StoredJobRow {
   printer_id: number;
   preset_id: number | null;
   name: string;
+  group_name: string | null;
   scope: "global" | "user";
   owner_id: number | null;
   filename: string;
@@ -54,11 +55,12 @@ export function requireStoredJob(db: Db, id: number): StoredJobRow {
   return row;
 }
 
+/** Grouped entries come first, alphabetically; the ungrouped ones trail them. */
 export function listStoredJobs(db: Db, user: UserRow, printerId?: number): StoredJobRow[] {
   return db.prepare(`
     SELECT * FROM stored_jobs
     WHERE (scope = 'global' OR owner_id = ?) AND (? IS NULL OR printer_id = ?)
-    ORDER BY scope ASC, name
+    ORDER BY group_name IS NULL, group_name COLLATE NOCASE, scope ASC, name
   `).all(user.id, printerId ?? null, printerId ?? null) as unknown as StoredJobRow[];
 }
 
@@ -104,15 +106,25 @@ function problemsFor(db: Db, row: StoredJobRow, printer: PrinterRow | undefined)
   return format ? [...problems, format] : problems;
 }
 
+export interface StoredJobInput {
+  printerId: unknown;
+  presetId?: unknown;
+  name: unknown;
+  group?: unknown;
+  scope?: unknown;
+  options?: unknown;
+}
+
 interface Parsed {
   printerId: number;
   presetId: number | null;
   name: string;
+  group: string | null;
   scope: "global" | "user";
   options: Record<string, unknown>;
 }
 
-function parseInput(db: Db, input: { printerId: unknown; presetId?: unknown; name: unknown; scope?: unknown; options?: unknown }, user: UserRow): Parsed {
+function parseInput(db: Db, input: StoredJobInput, user: UserRow): Parsed {
   const printerId = Number(input.printerId);
   if (!Number.isInteger(printerId))
     throw new HttpError(400, "printerId is required");
@@ -134,7 +146,8 @@ function parseInput(db: Db, input: { printerId: unknown; presetId?: unknown; nam
   const options = input.options ?? {};
   if (typeof options !== "object" || options === null || Array.isArray(options))
     throw new HttpError(400, "options must be an object");
-  return { printerId, presetId, name: input.name.trim(), scope, options: options as Record<string, unknown> };
+  const group = typeof input.group === "string" && input.group.trim() !== "" ? input.group.trim() : null;
+  return { printerId, presetId, name: input.name.trim(), group, scope, options: options as Record<string, unknown> };
 }
 
 /** Refuses an entry that could not print as it stands, the same bar presets are held to. */
@@ -150,15 +163,15 @@ function assertPrintable(db: Db, parsed: Parsed, format: string): void {
     throw new HttpError(422, errors.join("; "));
 }
 
-export function createStoredJob(db: Db, input: { printerId: unknown; presetId?: unknown; name: unknown; scope?: unknown; options?: unknown }, file: StoredFile, user: UserRow): StoredJobRow {
+export function createStoredJob(db: Db, input: StoredJobInput, file: StoredFile, user: UserRow): StoredJobRow {
   const parsed = parseInput(db, input, user);
   assertPrintable(db, parsed, file.format);
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
   const stamp = now();
   const result = db.prepare(`
-    INSERT INTO stored_jobs (printer_id, preset_id, name, scope, owner_id, filename, file_path, byte_size, document_format, options, preset_options, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(parsed.printerId, preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
+    INSERT INTO stored_jobs (printer_id, preset_id, name, group_name, scope, owner_id, filename, file_path, byte_size, document_format, options, preset_options, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(parsed.printerId, preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.group, parsed.scope, parsed.scope === "user" ? user.id : null, file.filename, file.filePath, file.byteSize, file.format, JSON.stringify(parsed.options), preset ? preset.options : "{}", stamp, stamp);
   return requireStoredJob(db, Number(result.lastInsertRowid));
 }
 
@@ -194,7 +207,7 @@ export async function storeFromJob(db: Db, jobId: number, input: { name: unknown
   }
 }
 
-export function updateStoredJob(db: Db, id: number, input: { presetId?: unknown; name: unknown; scope?: unknown; options?: unknown }, user: UserRow): StoredJobRow {
+export function updateStoredJob(db: Db, id: number, input: Omit<StoredJobInput, "printerId">, user: UserRow): StoredJobRow {
   const existing = requireStoredJob(db, id);
   if (!canEditStoredJob(existing, user))
     throw new HttpError(403, "you cannot edit this library entry");
@@ -202,9 +215,9 @@ export function updateStoredJob(db: Db, id: number, input: { presetId?: unknown;
   assertPrintable(db, parsed, existing.document_format);
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
   db.prepare(`
-    UPDATE stored_jobs SET preset_id = ?, name = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
+    UPDATE stored_jobs SET preset_id = ?, name = ?, group_name = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
     WHERE id = ?
-  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
+  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.group, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
   return requireStoredJob(db, id);
 }
 
@@ -274,6 +287,7 @@ export function toStoredJobDto(db: Db, row: StoredJobRow, user: UserRow): Stored
     presetId: preset?.id ?? null,
     presetName: preset?.name ?? null,
     name: row.name,
+    group: row.group_name,
     scope: row.scope,
     ownerId: row.owner_id,
     filename: row.filename,

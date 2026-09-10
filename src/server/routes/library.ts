@@ -15,12 +15,12 @@ export function libraryRoutes(app: FastifyInstance, db: Db, dirs: { storedDir: s
     return listStoredJobs(db, req.user!, printerId).map(row => toStoredJobDto(db, row, req.user!));
   });
 
-  /** Multipart: the file plus name, printerId, optional presetId, scope and options (JSON). */
+  /** Multipart: the file plus name, printerId, optional presetId, group, scope and options (JSON). */
   app.post("/api/library", async (req, reply) => {
     const upload = await receiveUpload(req, dirs.storedDir);
     try {
       const f = upload.fields;
-      const row = createStoredJob(db, { printerId: f.printerId, presetId: f.presetId, name: f.name, scope: f.scope, options: optionsField(f.options) }, { filePath: upload.filePath, filename: upload.filename, byteSize: upload.byteSize, format: upload.format }, req.user!);
+      const row = createStoredJob(db, { printerId: f.printerId, presetId: f.presetId, name: f.name, group: f.group, scope: f.scope, options: optionsField(f.options) }, { filePath: upload.filePath, filename: upload.filename, byteSize: upload.byteSize, format: upload.format }, req.user!);
       return reply.code(201).send(toStoredJobDto(db, row, req.user!));
     }
     catch (err) {
@@ -36,8 +36,8 @@ export function libraryRoutes(app: FastifyInstance, db: Db, dirs: { storedDir: s
   });
 
   app.put("/api/library/:id", async (req) => {
-    const body = (req.body ?? {}) as { name?: unknown; presetId?: unknown; scope?: unknown; options?: unknown };
-    const row = updateStoredJob(db, idParam(req.params), { name: body.name, presetId: body.presetId, scope: body.scope, options: body.options }, req.user!);
+    const body = (req.body ?? {}) as { name?: unknown; presetId?: unknown; group?: unknown; scope?: unknown; options?: unknown };
+    const row = updateStoredJob(db, idParam(req.params), { name: body.name, presetId: body.presetId, group: body.group, scope: body.scope, options: body.options }, req.user!);
     return toStoredJobDto(db, row, req.user!);
   });
 

@@ -491,3 +491,18 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 .crash p { margin: 0; color: var(--text-2); }
 .crash pre { margin: 0; padding: 10px 12px; font-size: var(--fs-xs); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm); white-space: pre-wrap; }
 .crash .btn { justify-self: start; }
+
+/* ---------- library groups and search ---------- */
+
+.search { position: relative; display: flex; align-items: center; }
+.search > .icon { position: absolute; left: 9px; color: var(--text-3); pointer-events: none; }
+.search .control { width: auto; min-width: 200px; padding-left: 30px; }
+@media (max-width: 880px) {
+  .search { flex: 1 1 100%; }
+  .search .control { width: 100%; min-width: 0; }
+}
+
+/* A group heading is a row of its own, so the columns keep lining up under it. */
+.table tr.group-row th { padding: 14px 16px 6px; background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; white-space: normal; border-bottom: 1px solid var(--border); }
+.table tbody tr.group-row:first-child th { padding-top: 10px; }
+.table tr.group-row .count { margin-left: 8px; color: var(--text-3); font-weight: 400; font-variant-numeric: tabular-nums; }

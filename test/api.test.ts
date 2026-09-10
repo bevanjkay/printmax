@@ -361,10 +361,10 @@ describe("aPI", () => {
     it("stores an uploaded document with a preset for everyone", async () => {
       const presets = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
       const preset = presets.find(p => p.scope === "global")!;
-      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), presetId: String(preset.id), name: "Sunday bulletin", scope: "global" }, { name: "bulletin.pdf", content: pdf }) }));
+      const res = await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), presetId: String(preset.id), name: "Sunday bulletin", group: " Weekly ", scope: "global" }, { name: "bulletin.pdf", content: pdf }) }));
       expect(res.statusCode, res.body).toBe(201);
       const entry = res.json<StoredJobDto>();
-      expect(entry).toMatchObject({ name: "Sunday bulletin", scope: "global", presetName: preset.name, filename: "bulletin.pdf", problems: [], printCount: 0, lastPrintedAt: null });
+      expect(entry).toMatchObject({ name: "Sunday bulletin", group: "Weekly", scope: "global", presetName: preset.name, filename: "bulletin.pdf", problems: [], printCount: 0, lastPrintedAt: null });
       expect(entry.effectiveOptions).toEqual(preset.options);
       sharedId = entry.id;
 
@@ -413,10 +413,24 @@ describe("aPI", () => {
       await expect(readFile(storedPath)).rejects.toThrow();
     });
 
+    it("lists entries by group with the ungrouped ones last, and a blank group clears it", async () => {
+      const add = async (name: string, group: string) => (await app.inject(as(adminCookie, { method: "POST", url: "/api/library", ...multipart({ printerId: String(printerId), name, group, scope: "global" }, { name: `${name}.pdf`, content: pdf }) }))).json<StoredJobDto>();
+      const notices = await add("Notices", "");
+      const roster = await add("Roster", "Admin");
+
+      const listed = (await app.inject(as(adminCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json<StoredJobDto[]>();
+      expect(listed.map(e => [e.group, e.name])).toEqual([["Admin", "Roster"], ["Weekly", "Sunday bulletin"], [null, "Notices"]]);
+
+      const cleared = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${roster.id}`, payload: { name: "Roster", group: "  ", scope: "global", options: {} } }));
+      expect(cleared.json<StoredJobDto>().group).toBeNull();
+      for (const id of [notices.id, roster.id])
+        expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/${id}` }))).statusCode).toBe(204);
+    });
+
     it("lets admins rename, re-point and delete shared entries", async () => {
-      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Bulletin", presetId: null, scope: "global", options: { sides: "one-sided" } } }));
+      const renamed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/library/${sharedId}`, payload: { name: "Bulletin", presetId: null, group: "Sunday", scope: "global", options: { sides: "one-sided" } } }));
       expect(renamed.statusCode, renamed.body).toBe(200);
-      expect(renamed.json<StoredJobDto>()).toMatchObject({ name: "Bulletin", presetId: null, effectiveOptions: { sides: "one-sided" } });
+      expect(renamed.json<StoredJobDto>()).toMatchObject({ name: "Bulletin", group: "Sunday", presetId: null, effectiveOptions: { sides: "one-sided" } });
       expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/library/${sharedId}` }))).statusCode).toBe(204);
       expect((await app.inject(as(userCookie, { method: "GET", url: `/api/library?printerId=${printerId}` }))).json()).toEqual([]);
     });

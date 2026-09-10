@@ -106,6 +106,9 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX stored_jobs_printer ON stored_jobs(printer_id);
   `,
+  `
+  ALTER TABLE stored_jobs ADD COLUMN group_name TEXT;
+  `,
 ];
 
 export function openDb(file: string): Db {

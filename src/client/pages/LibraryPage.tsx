@@ -1,10 +1,10 @@
 import type { FormEvent } from "react";
 import type { FormField, PresetDto, PrinterDto, StoredJobDto, UserDto } from "../../shared/types.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
-import { IconLibrary, IconPlus, IconUpload } from "../components/Icons.js";
+import { IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { formatDate, summariseOptions, useAsyncError } from "../util.js";
 
@@ -26,14 +26,16 @@ interface EditorProps {
   user: UserDto;
   printer: PrinterDto;
   presets: PresetDto[];
+  groups: string[];
   entry: StoredJobDto | null;
   onSaved: () => void;
   onCancel: () => void;
 }
 
-/** New entries take a file; editing changes the name, preset and who can use it. */
-function Editor({ user, printer, presets, entry, onSaved, onCancel }: EditorProps) {
+/** New entries take a file; editing changes the name, group, preset and who can use it. */
+function Editor({ user, printer, presets, groups, entry, onSaved, onCancel }: EditorProps) {
   const [name, setName] = useState(entry?.name ?? "");
+  const [group, setGroup] = useState(entry?.group ?? "");
   const [presetId, setPresetId] = useState<number | null>(entry?.presetId ?? presets[0]?.id ?? null);
   const [scope, setScope] = useState<"global" | "user">(entry?.scope ?? (user.role === "admin" ? "global" : "user"));
   const [file, setFile] = useState<File | null>(null);
@@ -46,9 +48,9 @@ function Editor({ user, printer, presets, entry, onSaved, onCancel }: EditorProp
     setBusy(true);
     try {
       if (entry)
-        await api.updateStoredJob(entry.id, { name, presetId, scope, options: entry.options });
+        await api.updateStoredJob(entry.id, { name, presetId, group, scope, options: entry.options });
       else if (file)
-        await api.addToLibrary({ printerId: printer.id, presetId, name, scope, file });
+        await api.addToLibrary({ printerId: printer.id, presetId, name, group, scope, file });
       onSaved();
     }
     catch (err) {
@@ -84,14 +86,22 @@ function Editor({ user, printer, presets, entry, onSaved, onCancel }: EditorProp
               </select>
             </Field>
           </div>
-          {user.role === "admin" && (
-            <Field label="Who can use it">
-              <select className="control" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
-                <option value="global">Everyone</option>
-                <option value="user">Only me</option>
-              </select>
+          <div className="two-col">
+            <Field label="Group" hint="Optional. Documents are listed under their group.">
+              <input className="control" list="library-groups" value={group} onChange={e => setGroup(e.target.value)} placeholder="e.g. Sunday" />
+              <datalist id="library-groups">
+                {groups.map(g => <option key={g} value={g} />)}
+              </datalist>
             </Field>
-          )}
+            {user.role === "admin" && (
+              <Field label="Who can use it">
+                <select className="control" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
+                  <option value="global">Everyone</option>
+                  <option value="user">Only me</option>
+                </select>
+              </Field>
+            )}
+          </div>
           {error && <Notice tone="error">{error}</Notice>}
         </div>
       </Panel>
@@ -127,6 +137,23 @@ function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto
   );
 }
 
+/** Entries arrive grouped and in order, so one pass keeps the groups the server decided on. */
+function sections(entries: StoredJobDto[]): Array<[string | null, StoredJobDto[]]> {
+  const out: Array<[string | null, StoredJobDto[]]> = [];
+  for (const entry of entries) {
+    const last = out[out.length - 1];
+    if (last && last[0] === entry.group)
+      last[1].push(entry);
+    else
+      out.push([entry.group, [entry]]);
+  }
+  return out;
+}
+
+function matches(entry: StoredJobDto, query: string): boolean {
+  return [entry.name, entry.filename, entry.group, entry.presetName].some(v => v?.toLowerCase().includes(query));
+}
+
 export function LibraryPage({ user, printers, onPrinted }: Props) {
   const [printerId, setPrinterId] = useState<number | null>(null);
   const printer = printers.find(p => p.id === printerId) ?? printers[0];
@@ -137,6 +164,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
   const [printing, setPrinting] = useState<number | null>(null);
   const [replacing, setReplacing] = useState<number | null>(null);
   const [printed, setPrinted] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const { error, fail, clear } = useAsyncError();
 
@@ -195,6 +223,11 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
   }
 
   const primaryNames = fields.filter(f => isPrimaryOption(f.name)).map(f => f.name);
+  const trimmed = query.trim().toLowerCase();
+  const shown = (entries ?? []).filter(e => trimmed === "" || matches(e, trimmed));
+  const grouped = sections(shown);
+  const showGroups = grouped.some(([label]) => label !== null);
+  const groups = [...new Set((entries ?? []).map(e => e.group).filter(g => g !== null))];
 
   return (
     <div className="stack">
@@ -212,6 +245,10 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
         >
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
+        <div className="search">
+          <IconSearch className="icon" />
+          <input className="control" type="search" aria-label="Search the library" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
+        </div>
         <div className="spacer" />
         <Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")} disabled={editing === "new"}>Add document</Button>
       </div>
@@ -238,6 +275,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           user={user}
           printer={printer}
           presets={presets}
+          groups={groups}
           entry={editing === "new" ? null : editing}
           onSaved={() => {
             setEditing(null);
@@ -259,94 +297,115 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                   action={<Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")}>Add the first document</Button>}
                 />
               )
-            : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Document</th>
-                      <th>Prints as</th>
-                      <th>Visibility</th>
-                      <th>Last printed</th>
-                      <th>Status</th>
-                      <th className="actions"><span className="sr-only">Actions</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {entries.map(entry => (
-                      <tr key={entry.id}>
-                        <td>
-                          <div className="primary">{entry.name}</div>
-                          <div className="meta">{`${entry.filename} · ${formatBytes(entry.byteSize)}`}</div>
-                        </td>
-                        <td>
-                          <div>{entry.presetName ?? (entry.presetId === null && Object.keys(entry.effectiveOptions).length === 0 ? "Printer defaults" : "Saved settings")}</div>
-                          <div className="meta">{summariseOptions(fields, entry.effectiveOptions, primaryNames, { changesOnly: true })}</div>
-                        </td>
-                        <td><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
-                        <td className="meta num">
-                          {entry.lastPrintedAt ? formatDate(entry.lastPrintedAt) : "Never"}
-                          {entry.printCount > 0 && <div className="meta">{`${entry.printCount} ${entry.printCount === 1 ? "time" : "times"}`}</div>}
-                        </td>
-                        <td>
-                          {entry.problems.length > 0 ? <Badge tone="danger">Needs attention</Badge> : <Badge tone="success">Ready</Badge>}
-                          {entry.problems.length > 0 && <div className="meta danger-text">{entry.problems.join("; ")}</div>}
-                        </td>
-                        <td className="actions">
-                          {printing === entry.id
-                            ? (
-                                <PrintCopies
-                                  entry={entry}
-                                  onDone={() => {
-                                    setPrinting(null);
-                                    setPrinted(`${entry.name} is queued. Watch it under Jobs.`);
-                                    onPrinted();
-                                    void refresh();
-                                  }}
-                                  onCancel={() => setPrinting(null)}
-                                  onError={(err) => {
-                                    setPrinting(null);
-                                    fail(err);
-                                  }}
-                                />
-                              )
-                            : (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="primary"
-                                    disabled={entry.problems.length > 0}
-                                    onClick={() => {
-                                      clear();
-                                      setPrinted(null);
-                                      setPrinting(entry.id);
-                                    }}
-                                  >
-                                    Print
-                                  </Button>
-                                  {entry.editable && (
-                                    <>
-                                      <Button size="sm" onClick={() => setEditing(entry)}>Edit</Button>
-                                      <Button
-                                        size="sm"
-                                        icon={<IconUpload />}
-                                        onClick={() => {
-                                          setReplacing(entry.id);
-                                          fileRef.current?.click();
-                                        }}
-                                      >
-                                        Replace file
-                                      </Button>
-                                      <ConfirmButton size="sm" label="Delete" confirmLabel="Delete from library?" onConfirm={() => void remove(entry)} />
-                                    </>
-                                  )}
-                                </>
-                              )}
-                        </td>
+            : shown.length === 0
+              ? (
+                  <EmptyState
+                    icon={<IconSearch />}
+                    title={`Nothing matches “${query.trim()}”`}
+                    description="Search covers the document's name, its file, its group and the preset it prints with."
+                    action={<Button onClick={() => setQuery("")}>Clear search</Button>}
+                  />
+                )
+              : (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Document</th>
+                        <th>Prints as</th>
+                        <th>Visibility</th>
+                        <th>Last printed</th>
+                        <th>Status</th>
+                        <th className="actions"><span className="sr-only">Actions</span></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody>
+                      {grouped.map(([label, items]) => (
+                        <Fragment key={label ?? ""}>
+                          {showGroups && (
+                            <tr className="group-row">
+                              <th colSpan={6} scope="colgroup">
+                                {label ?? "Ungrouped"}
+                                <span className="count">{items.length}</span>
+                              </th>
+                            </tr>
+                          )}
+                          {items.map(entry => (
+                            <tr key={entry.id}>
+                              <td>
+                                <div className="primary">{entry.name}</div>
+                                <div className="meta">{`${entry.filename} · ${formatBytes(entry.byteSize)}`}</div>
+                              </td>
+                              <td>
+                                <div>{entry.presetName ?? (entry.presetId === null && Object.keys(entry.effectiveOptions).length === 0 ? "Printer defaults" : "Saved settings")}</div>
+                                <div className="meta">{summariseOptions(fields, entry.effectiveOptions, primaryNames, { changesOnly: true })}</div>
+                              </td>
+                              <td><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
+                              <td className="meta num">
+                                {entry.lastPrintedAt ? formatDate(entry.lastPrintedAt) : "Never"}
+                                {entry.printCount > 0 && <div className="meta">{`${entry.printCount} ${entry.printCount === 1 ? "time" : "times"}`}</div>}
+                              </td>
+                              <td>
+                                {entry.problems.length > 0 ? <Badge tone="danger">Needs attention</Badge> : <Badge tone="success">Ready</Badge>}
+                                {entry.problems.length > 0 && <div className="meta danger-text">{entry.problems.join("; ")}</div>}
+                              </td>
+                              <td className="actions">
+                                {printing === entry.id
+                                  ? (
+                                      <PrintCopies
+                                        entry={entry}
+                                        onDone={() => {
+                                          setPrinting(null);
+                                          setPrinted(`${entry.name} is queued. Watch it under Jobs.`);
+                                          onPrinted();
+                                          void refresh();
+                                        }}
+                                        onCancel={() => setPrinting(null)}
+                                        onError={(err) => {
+                                          setPrinting(null);
+                                          fail(err);
+                                        }}
+                                      />
+                                    )
+                                  : (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="primary"
+                                          disabled={entry.problems.length > 0}
+                                          onClick={() => {
+                                            clear();
+                                            setPrinted(null);
+                                            setPrinting(entry.id);
+                                          }}
+                                        >
+                                          Print
+                                        </Button>
+                                        {entry.editable && (
+                                          <>
+                                            <Button size="sm" onClick={() => setEditing(entry)}>Edit</Button>
+                                            <Button
+                                              size="sm"
+                                              icon={<IconUpload />}
+                                              onClick={() => {
+                                                setReplacing(entry.id);
+                                                fileRef.current?.click();
+                                              }}
+                                            >
+                                              Replace file
+                                            </Button>
+                                            <ConfirmButton size="sm" label="Delete" confirmLabel="Delete from library?" onConfirm={() => void remove(entry)} />
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
       </div>
     </div>
   );

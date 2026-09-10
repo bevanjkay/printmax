@@ -157,6 +157,12 @@ can be kept from the Jobs list with **Keep**. Files live under `/data/stored` an
 by retention; the preset is followed by reference, so improving it improves every document that
 uses it.
 
+Each entry can name a group — "Sunday", "Kids", "Office" — and the list is filed under those
+headings, ungrouped documents last. A group is free text on the entry, picked from the ones
+already in use, so there is nothing to set up before you use one and nothing left over when the
+last document leaves a group. The search box above the list covers the name, the file, the group
+and the preset.
+
 ## Preset files
 
 The Presets page exports a printer's presets as JSON and imports the same format; presets whose
