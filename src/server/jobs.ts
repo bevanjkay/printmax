@@ -247,12 +247,14 @@ async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<s
     ...(paper ? { paper } : {}),
     ...(margins ? { margins } : {}),
   });
-  const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document });
+  const copies = Number(options.copies);
+  const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document, copies: Number.isInteger(copies) ? copies : 1 });
   // Named PostScript where the printer lists it (auto-sensing printers cannot sniff past the PJL header); raw otherwise.
   const formats = attrValues<string>(caps, "document-format-supported");
   const documentFormat = formats.includes("application/postscript") ? "application/postscript" : "application/octet-stream";
-  const copies = options.copies;
-  return { data, documentFormat, jobAttributes: buildJobAttributes(copies === undefined ? {} : { copies }, caps) };
+  // The document asks for the copies itself. A printer in this mode ignores the IPP attribute, and one
+  // that did honour both would print the run twice over.
+  return { data, documentFormat, jobAttributes: buildJobAttributes({}, caps) };
 }
 
 /** Refreshes the state of one submitted job from the printer. */

@@ -29,13 +29,25 @@ function feature(option: PpdOption, value: string): string {
   return `[{\n%%BeginFeature: *${option.key} ${value}\n${code ? `${code}\n` : ""}%%EndFeature\n} stopped cleartomark\n`;
 }
 
+/**
+ * The copies, as CUPS's pstops writes them: the page device parameter where the RIP understands
+ * one, the LanguageLevel 1 spelling otherwise. Nothing else in this mode reaches the printer, so
+ * without this every job prints once.
+ */
+function copiesCode(ppd: ParsedPpd, copies: number): string {
+  if (copies <= 1)
+    return "";
+  return ppd.languageLevel >= 2 ? `<</NumCopies ${copies}>>setpagedevice\n` : `/#copies ${copies} def\n`;
+}
+
 /** The %%BeginSetup block: patch files first, then non-JCL options by order, alphabetical within equal orders (CUPS's sort). */
-export function setupBlock(ppd: ParsedPpd, chosen: Record<string, string>): string {
+export function setupBlock(ppd: ParsedPpd, chosen: Record<string, string>, copies = 1): string {
   const patches = ppd.jobPatchFiles.map(p => `[{\n%%BeginFeature: *JobPatchFile ${p.name}\n${p.code}\n%%EndFeature\n} stopped cleartomark\n`).join("");
   const picked = effectiveChoices(ppd, chosen)
     .filter(c => c.option.section !== "JCLSetup")
     .sort((a, b) => a.option.order - b.option.order || (a.option.key < b.option.key ? -1 : a.option.key > b.option.key ? 1 : 0));
-  return patches + picked.map(c => feature(c.option, c.value)).join("");
+  // The copies go last: an option's own setpagedevice would otherwise be free to reset them.
+  return patches + picked.map(c => feature(c.option, c.value)).join("") + copiesCode(ppd, copies);
 }
 
 function pjlString(s: string): string {
@@ -70,6 +82,7 @@ export interface AssembleInput {
   userName: string;
   /** DSC-conforming PostScript for the document, as Ghostscript's ps2write produces. */
   document: Buffer;
+  copies?: number;
 }
 
 /** Where a DSC comment opens a line, which is the only place it means anything. */
@@ -86,7 +99,7 @@ function lineStarting(document: Buffer, marker: string): number {
  */
 export function assemblePostScript(input: AssembleInput): Buffer {
   const { document } = input;
-  const setup = Buffer.from(`%%BeginSetup\n${setupBlock(input.ppd, input.chosen)}%%EndSetup\n`, "latin1");
+  const setup = Buffer.from(`%%BeginSetup\n${setupBlock(input.ppd, input.chosen, input.copies)}%%EndSetup\n`, "latin1");
   const header = Buffer.from(jclHeader(input.ppd, input.chosen, input.jobName, input.userName), "latin1");
   const trailer = Buffer.from(input.ppd.jcl?.end ?? "", "latin1");
   let at = -1;
