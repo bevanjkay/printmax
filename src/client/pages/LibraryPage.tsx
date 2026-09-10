@@ -1,11 +1,13 @@
 import type { FormEvent } from "react";
 import type { FormField, LibraryGroupDto, PresetDto, PrinterDto, StoredJobDto, UserDto } from "../../shared/types.js";
+import type { SectionToggles } from "../sections.js";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, NumberInput, Panel, SkeletonRows } from "../components/ui.js";
+import { sectionOpen, withSection } from "../sections.js";
 import { formatDate, summariseOptions, useAsyncError } from "../util.js";
 
 interface Props {
@@ -364,7 +366,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
   const [replacing, setReplacing] = useState<number | null>(null);
   const [printed, setPrinted] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [toggles, setToggles] = useState<SectionToggles>({ query: "", sections: {} });
   const fileRef = useRef<HTMLInputElement>(null);
   const { error, fail, clear } = useAsyncError();
 
@@ -428,8 +430,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
   const searching = trimmed !== "";
   const shown = (entries ?? []).filter(e => !searching || matches(e, trimmed));
   const grouped = sections(groups, shown, searching);
-  // Sections start closed, and a search opens what it found until the reader says otherwise.
-  const isOpen = (section: Section) => open[section.key] ?? searching;
+  const isOpen = (section: Section) => sectionOpen(toggles, section.key, trimmed);
   const allOpen = grouped.every(isOpen);
 
   return (
@@ -445,7 +446,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
             setEditing(null);
             setManaging(false);
             setPrinted(null);
-            setOpen({});
+            setToggles({ query: trimmed, sections: {} });
           }}
         >
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -455,7 +456,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           <input className="control" type="search" aria-label="Search the library" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
         {groups.length > 0 && (
-          <Button variant="ghost" onClick={() => setOpen(Object.fromEntries(grouped.map(s => [s.key, !allOpen])))}>
+          <Button variant="ghost" onClick={() => setToggles({ query: trimmed, sections: Object.fromEntries(grouped.map(s => [s.key, !allOpen])) })}>
             {allOpen ? "Collapse all" : "Expand all"}
           </Button>
         )}
@@ -501,7 +502,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
           onGroupsChanged={refresh}
           onSaved={(groupId) => {
             setEditing(null);
-            setOpen(o => ({ ...o, [sectionKey(groupId)]: true }));
+            setToggles(t => withSection(t, trimmed, sectionKey(groupId), true));
             void refresh();
           }}
           onCancel={() => setEditing(null)}
@@ -551,7 +552,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                   type="button"
                                   className="group-toggle"
                                   aria-expanded={isOpen(section)}
-                                  onClick={() => setOpen(o => ({ ...o, [section.key]: !isOpen(section) }))}
+                                  onClick={() => setToggles(t => withSection(t, trimmed, section.key, !sectionOpen(t, section.key, trimmed)))}
                                 >
                                   <IconChevron className="icon chev" />
                                   {section.name}
