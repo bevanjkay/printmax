@@ -243,7 +243,7 @@ async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<s
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
   const document = await pdfToPostScript(job.file_path!, {
     signal,
-    ...(limits.maxPostScriptBytes ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
+    ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
     ...(paper ? { paper } : {}),
     ...(margins ? { margins } : {}),
   });
