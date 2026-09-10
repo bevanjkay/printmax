@@ -114,6 +114,18 @@ describe("assembling the driver's job", () => {
     expect(setupBlock(ppd, {})).toContain("%%BeginFeature: *Duplex None");
   });
 
+  it("asks the RIP for the copies, which is the only way this mode gets more than one", () => {
+    const block = setupBlock(ppd, chosen, 3);
+    expect(block).toContain("<</NumCopies 3>>setpagedevice\n");
+    // After the features, so an option's own setpagedevice cannot undo it.
+    expect(block.indexOf("*PageSize A5")).toBeLessThan(block.indexOf("NumCopies"));
+    expect(setupBlock(ppd, chosen, 1)).not.toContain("NumCopies");
+    expect(setupBlock(ppd, chosen)).not.toContain("NumCopies");
+
+    const levelOne = parsePpd(text.replace("*LanguageLevel: \"3\"", "*LanguageLevel: \"1\""));
+    expect(setupBlock(levelOne, chosen, 3)).toContain("/#copies 3 def\n");
+  });
+
   it("keeps the document's bytes intact, including a %%Page: that is only image data", () => {
     const image = Buffer.from([0x80, 0xFF, 0x25, 0x25, 0x50, 0x61, 0x67, 0x65, 0x3A, 0x00, 0xFE]);
     const doc = Buffer.concat([
@@ -128,8 +140,9 @@ describe("assembling the driver's job", () => {
 
   it("wraps the document: JCL, then PostScript with the setup block before the first page", () => {
     const doc = Buffer.from("%!PS-Adobe-3.0\n%%Pages: 1\n%%EndComments\n%%BeginProlog\n/x 1 def\n%%EndProlog\n%%Page: 1 1\nshowpage\n%%Trailer\n%%EOF\n", "latin1");
-    const out = assemblePostScript({ ppd, chosen, jobName: "a.pdf", userName: "pat", document: doc }).toString("latin1");
+    const out = assemblePostScript({ ppd, chosen, jobName: "a.pdf", userName: "pat", document: doc, copies: 4 }).toString("latin1");
     expect(out.startsWith("\x1B%-12345X@PJL\n")).toBe(true);
+    expect(out.indexOf("<</NumCopies 4>>setpagedevice")).toBeGreaterThan(out.indexOf("%%BeginSetup"));
     expect(out.indexOf("%!PS-Adobe-3.0")).toBeGreaterThan(0);
     expect(out.indexOf("%%EndProlog")).toBeLessThan(out.indexOf("%%BeginSetup"));
     expect(out.indexOf("%%EndSetup")).toBeLessThan(out.indexOf("%%Page: 1 1"));

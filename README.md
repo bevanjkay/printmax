@@ -140,6 +140,8 @@ and switch the printer to **PostScript via PPD**. From then on:
   copies, in place of the IPP attributes;
 - each job is a PDF converted with Ghostscript and wrapped in the PPD's PJL header with every
   option's snippet in `*OrderDependency` order, exactly as CUPS emits it;
+- copies are asked for inside the PostScript (`NumCopies`), not as an IPP attribute, since a
+  printer in this mode reads the document and ignores the attributes;
 - PDF is the only accepted upload while the mode is on;
 - pages go out edge to edge, so the only clipping is the printer's own unprintable strip. Turn on
   **Keep printer margins** (per job or in a preset) to shrink each page uniformly into the PPD's
