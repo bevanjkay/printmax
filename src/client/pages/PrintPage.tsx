@@ -1,13 +1,13 @@
 import type { FormEvent } from "react";
-import type { FormField, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
+import type { FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useEffect, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
-import { IconChevron } from "../components/Icons.js";
+import { IconCheck, IconChevron, Spinner } from "../components/Icons.js";
 import { JobsTable } from "../components/JobsTable.js";
 import { OptionsForm } from "../components/OptionsForm.js";
-import { Badge, Button, Dropzone, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
+import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useJobs } from "../hooks.js";
 import { defaultsFrom, describeReason, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
@@ -21,26 +21,30 @@ interface Props {
   onGoToJobs: () => void;
 }
 
+/** The form gives way to the job's own progress once it is sent, so nothing looks editable that isn't. */
+type Phase = "form" | "sending" | "sent";
+
 interface JobFormProps {
   printer: PrinterDto;
   printers: PrinterDto[];
   file: File | null;
   isAdmin: boolean;
+  phase: Phase;
   onPrinterChange: (id: number) => void;
-  onSubmitted: () => void;
+  onSending: () => void;
+  onSubmitted: (job: JobDto) => void;
+  onFailed: () => void;
 }
 
 const CUSTOM = "custom";
 
 /** Keyed by printer id by the parent so options and presets reload when the printer changes; the file lives in the parent. */
-function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitted }: JobFormProps) {
+function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onSending, onSubmitted, onFailed }: JobFormProps) {
   const [fields, setFields] = useState<FormField[] | null>(null);
   const [presets, setPresets] = useState<PresetDto[]>([]);
   const [presetId, setPresetId] = useState<number | null>(null);
   const [options, setOptions] = useState<OptionValues>({});
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
   const { error, fail, clear } = useAsyncError();
 
   useEffect(() => {
@@ -78,19 +82,14 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
     e.preventDefault();
     if (!file)
       return;
-    setBusy(true);
     clear();
-    setDone(null);
+    onSending();
     try {
-      const job = await api.submitJob(printer.id, presetId, file, options);
-      setDone(`${job.filename} is on its way to ${printer.name}.`);
-      onSubmitted();
+      onSubmitted(await api.submitJob(printer.id, presetId, file, options));
     }
     catch (err) {
       fail(err);
-    }
-    finally {
-      setBusy(false);
+      onFailed();
     }
   }
 
@@ -105,6 +104,10 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
   const hasPresets = presets.length > 0;
   const preset = presets.find(p => p.id === presetId) ?? null;
   const summary = fields ? summariseOptions(fields, options, primaryNames) : "";
+
+  // Stays mounted while the job goes out, so "these settings" are still here to print another with.
+  if (phase !== "form")
+    return null;
 
   return (
     <form onSubmit={submit}>
@@ -197,15 +200,11 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
 
       <footer className="panel-footer">
         <span className="status">
-          {done
-            ? <span className="success-text">{done}</span>
-            : file
-              ? <span>{summary ? `Will print ${summary}.` : "Ready to print."}</span>
-              : "Add a document above to print."}
+          {file
+            ? <span>{summary ? `Will print ${summary}.` : "Ready to print."}</span>
+            : "Add a document above to print."}
         </span>
-        <Button type="submit" variant="primary" size="lg" loading={busy} disabled={!file || blocked || !fields}>
-          {busy ? "Sending" : "Print"}
-        </Button>
+        <Button type="submit" variant="primary" size="lg" disabled={!file || blocked || !fields}>Print</Button>
       </footer>
     </form>
   );
@@ -214,8 +213,21 @@ function JobForm({ printer, printers, file, isAdmin, onPrinterChange, onSubmitte
 export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, onGoToJobs }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [phase, setPhase] = useState<Phase>("form");
+  const [submitted, setSubmitted] = useState<JobDto | null>(null);
+  const [formKey, setFormKey] = useState(0);
   const printer = printers.find(p => p.id === selectedId) ?? printers[0];
   const { jobs, error, refresh } = useJobs({ all: false, limit: 5, refreshKey: jobsKey });
+  // The job list is polling anyway, so the panel can follow the job the printer is actually doing.
+  const live = submitted === null ? null : jobs?.find(j => j.id === submitted.id) ?? submitted;
+
+  /** Back to the form, with the settings as they were or as the printer's presets have them. */
+  function printAnother(keepSettings: boolean) {
+    setSubmitted(null);
+    setPhase("form");
+    if (!keepSettings)
+      setFormKey(k => k + 1);
+  }
 
   if (loading)
     return <Panel><SkeletonRows rows={4} /></Panel>;
@@ -234,25 +246,64 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
   return (
     <div className="stack">
       <Panel>
-        <div className="panel-body">
-          <div className="field compact">
-            <span className="field-label">Document</span>
-            <Dropzone file={file} onFile={setFile} accept="application/pdf,image/png,image/jpeg" />
+        {phase === "form" && (
+          <div className="panel-body">
+            <div className="field compact">
+              <span className="field-label">Document</span>
+              <Dropzone file={file} onFile={setFile} accept="application/pdf,image/png,image/jpeg" />
+            </div>
           </div>
-        </div>
+        )}
         <JobForm
-          key={printer.id}
+          key={`${printer.id}-${formKey}`}
           printer={printer}
           printers={printers}
           file={file}
           isAdmin={isAdmin}
+          phase={phase}
           onPrinterChange={setSelectedId}
-          onSubmitted={() => {
+          onSending={() => setPhase("sending")}
+          onSubmitted={(job) => {
+            setSubmitted(job);
+            setPhase("sent");
             setFile(null);
             onSubmitted();
             void refresh();
           }}
+          onFailed={() => setPhase("form")}
         />
+        {phase === "sending" && (
+          <div className="panel-body" role="status" aria-live="polite">
+            <EmptyState
+              icon={<Spinner />}
+              title={file ? `Sending ${file.name}` : "Sending the document"}
+              description={`Uploading it and queueing it on ${printer.name}. A large document takes a moment.`}
+            />
+          </div>
+        )}
+        {phase === "sent" && live && (
+          <div className="panel-body" role="status" aria-live="polite">
+            <EmptyState
+              icon={<IconCheck className="icon success-text" />}
+              title={live.state === "completed" ? "Printed" : "Job submitted"}
+              description={(
+                <>
+                  {`${live.filename} went to ${printer.name}.`}
+                  <span className="empty-meta">
+                    <StateBadge state={live.state} reasons={live.stateReasons} />
+                    {live.error && <span className="danger-text">{live.error}</span>}
+                  </span>
+                </>
+              )}
+              action={(
+                <div className="row">
+                  <Button variant="primary" onClick={() => printAnother(true)}>Print another with these settings</Button>
+                  <Button onClick={() => printAnother(false)}>Start a new job</Button>
+                </div>
+              )}
+            />
+          </div>
+        )}
       </Panel>
       <div>
         <div className="section-title">

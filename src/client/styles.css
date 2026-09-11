@@ -527,3 +527,10 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 .group-list .btn + .btn { margin-left: 0; }
 .btn .chev-up { transform: rotate(-90deg); }
 .btn .chev-down { transform: rotate(90deg); }
+
+/* ---------- the job on its way ---------- */
+
+.empty .spinner { width: 24px; height: 24px; color: var(--accent); animation: spin 0.8s linear infinite; }
+.empty .empty-meta { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.empty .row { justify-content: center; }
+.empty .row .btn { margin-top: 0; }
