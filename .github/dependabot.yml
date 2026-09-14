@@ -12,6 +12,12 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
+    ignore:
+      # TypeScript 7 is the native compiler line. Hold every repository on 6.x
+      # until it has been migrated by hand.
+      - dependency-name: typescript
+        versions:
+          - ">=7"
     cooldown:
       default-days: 7
   - package-ecosystem: github-actions
@@ -38,6 +44,20 @@ updates:
       timezone: Australia/Melbourne
     groups:
       docker-dependencies:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /**/*
+    schedule:
+      interval: monthly
+      time: !!str 08:00
+      timezone: Australia/Melbourne
+    groups:
+      docker-compose-dependencies:
         patterns:
           - "*"
     cooldown:
