@@ -46,6 +46,18 @@ updates:
       docker-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Datastore majors are migrations, not version bumps. Postgres needs a
+      # pg_upgrade or a dump/restore, and the 18 image additionally moved PGDATA
+      # to /var/lib/postgresql/<major>/docker, so a compose mount written for
+      # 17 or earlier is silently the wrong path. Redis data survives a major,
+      # but its licence and defaults have not. Bump both by hand.
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
+      - dependency-name: redis
+        update-types:
+          - version-update:semver-major
     cooldown:
       default-days: 7
   - package-ecosystem: docker-compose
@@ -60,6 +72,18 @@ updates:
       docker-compose-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Datastore majors are migrations, not version bumps. Postgres needs a
+      # pg_upgrade or a dump/restore, and the 18 image additionally moved PGDATA
+      # to /var/lib/postgresql/<major>/docker, so a compose mount written for
+      # 17 or earlier is silently the wrong path. Redis data survives a major,
+      # but its licence and defaults have not. Bump both by hand.
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
+      - dependency-name: redis
+        update-types:
+          - version-update:semver-major
     cooldown:
       default-days: 7
   - package-ecosystem: pip
