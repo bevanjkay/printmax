@@ -25,7 +25,7 @@ jobs:
     permissions:
       contents: read
       security-events: write # SARIF upload, skipped on private repositories
-    uses: bevanjkay/.github/.github/workflows/reusable-actionlint.yml@d21696943fa2aceecd6046ecfadb22e9abdbfa9c # v2026.09.09
+    uses: bevanjkay/.github/.github/workflows/reusable-actionlint.yml@3e72e076e6c2392168263e84970716a7012902ac # v2026.09.14
 
   conclusion:
     # The required check. Calling a reusable workflow names its jobs
