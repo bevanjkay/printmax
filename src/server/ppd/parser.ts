@@ -48,6 +48,8 @@ export interface ParsedPpd {
   hwMargins: { left: number; bottom: number; right: number; top: number } | null;
   /** *JobPatchFile snippets, emitted ahead of every option as CUPS does. */
   jobPatchFiles: Array<{ name: string; code: string }>;
+  /** *DefaultResolution in dots per inch: what the engine images at, whatever the user picks. */
+  resolution: { x: number; y: number } | null;
 }
 
 interface Entry {
@@ -131,7 +133,7 @@ function splitNameLabel(value: string): { name: string; label: string } {
 }
 
 export function parsePpd(text: string): ParsedPpd {
-  const ppd: ParsedPpd = { modelName: "", nickName: "", languageLevel: 2, jcl: null, options: [], constraints: [], paperDimensions: {}, jobPatchFiles: [], imageableAreas: {}, hwMargins: null };
+  const ppd: ParsedPpd = { modelName: "", nickName: "", languageLevel: 2, jcl: null, options: [], constraints: [], paperDimensions: {}, jobPatchFiles: [], imageableAreas: {}, hwMargins: null, resolution: null };
   const jcl = { begin: "", toPs: "", end: "" };
   let sawJcl = false;
   let group = { name: "", label: "" };
@@ -239,6 +241,9 @@ export function parsePpd(text: string): ParsedPpd {
       option.section = order.section;
     }
   }
+  const dpi = /^(\d+)(?:x(\d+))?dpi$/i.exec(defaults.get("Resolution") ?? "");
+  if (dpi)
+    ppd.resolution = { x: Number(dpi[1]), y: Number(dpi[2] ?? dpi[1]) };
   ppd.options = ppd.options.filter(o => o.choices.length > 0);
   if (sawJcl && (jcl.begin || jcl.toPs))
     ppd.jcl = jcl;

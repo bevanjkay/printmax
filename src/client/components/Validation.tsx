@@ -10,8 +10,18 @@ interface Props {
 
 /** Validation problems from the printer's capabilities, with the printer's own resolver as a one-click fix. */
 export function ValidationNotice({ result, value, onApply }: Props) {
-  if (!result || result.errors.length === 0)
+  if (!result || (result.errors.length === 0 && result.warnings.length === 0))
     return null;
+  if (result.errors.length === 0) {
+    return (
+      <Notice tone="warning">
+        <strong>Check this before you print.</strong>
+        <ul>
+          {result.warnings.map(w => <li key={w}>{w}</li>)}
+        </ul>
+      </Notice>
+    );
+  }
   const canFix = JSON.stringify(result.resolved) !== JSON.stringify(value);
   return (
     <Notice tone="error">

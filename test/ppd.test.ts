@@ -12,12 +12,28 @@ import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/ass
 import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
 import { ghostscriptAvailable, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
-import { validateJobOptions } from "../src/server/validation.js";
+import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
 
 const execFileAsync = promisify(execFile);
 const text = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 const ppd = parsePpd(text);
 const byKey = Object.fromEntries(ppd.options.map(o => [o.key, o]));
+
+/** Numbered objects into a PDF with the cross-reference table their offsets demand. */
+function assemblePdf(bodies: Buffer[]): Buffer {
+  const parts = [Buffer.from("%PDF-1.7\n", "latin1")];
+  const offsets: number[] = [];
+  let at = parts[0]!.length;
+  bodies.forEach((body, i) => {
+    const object = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), body, Buffer.from("\nendobj\n", "latin1")]);
+    offsets.push(at);
+    at += object.length;
+    parts.push(object);
+  });
+  const xref = offsets.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  parts.push(Buffer.from(`xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${bodies.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(parts);
+}
 
 /** A one-page PDF holding an unfiltered image of random bytes: small to build, incompressible in PostScript. */
 function noisyImagePdf(width: number, height: number): Buffer {
@@ -36,18 +52,23 @@ function noisyImagePdf(width: number, height: number): Buffer {
     ]),
     Buffer.from(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "latin1"),
   ];
-  const parts = [Buffer.from("%PDF-1.7\n", "latin1")];
-  const offsets: number[] = [];
-  let at = parts[0]!.length;
-  bodies.forEach((body, i) => {
-    const object = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), body, Buffer.from("\nendobj\n", "latin1")]);
-    offsets.push(at);
-    at += object.length;
-    parts.push(object);
-  });
-  const xref = offsets.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
-  parts.push(Buffer.from(`xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${bodies.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`, "latin1"));
-  return Buffer.concat(parts);
+  return assemblePdf(bodies);
+}
+
+/**
+ * A page ps2write cannot keep as vectors: transparency makes it rasterise the whole page at the
+ * device resolution, which is where a Canva export's hundreds of megabytes come from.
+ */
+function transparentPdf(): Buffer {
+  const content = "/GS0 gs 1 0 0 rg 40 40 400 700 re f 0 0 1 rg 150 150 400 600 re f";
+  const bodies = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Group << /S /Transparency /CS /DeviceRGB >> /Resources << /ExtGState << /GS0 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /ExtGState /ca 0.5 /CA 0.5 /BM /Multiply >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ].map(b => Buffer.from(b, "latin1"));
+  return assemblePdf(bodies);
 }
 
 describe("parsePpd", () => {
@@ -68,6 +89,7 @@ describe("parsePpd", () => {
     expect(ppd.paperDimensions.A5).toEqual({ width: 420, height: 595 });
     expect(ppd.imageableAreas.A5).toEqual({ llx: 12, lly: 12, urx: 408, ury: 583 });
     expect(ppd.hwMargins).toEqual({ left: 12, bottom: 12, right: 12, top: 12 });
+    expect(ppd.resolution).toEqual({ x: 600, y: 600 });
     expect(marginsFor(ppd, "A5")).toEqual({ left: 12, bottom: 12, right: 12, top: 12 });
     expect(marginsFor(ppd, undefined)).toEqual(ppd.hwMargins);
     expect(ppd.constraints).toContainEqual({ key1: "Finisher", choice1: "Hanging1", key2: "Stapling", choice2: "SS" });
@@ -178,9 +200,29 @@ describe("pPD options as a form and in validation", () => {
     expect(validateJobOptions({ "copies": 2, "ppd:Stapling": "SS" }, profile)).toEqual([]);
     expect(validateJobOptions({ "fit-to-margins": "true" }, profile)).toEqual([]);
     expect(validateJobOptions({ "fit-to-margins": "sometimes" }, profile)[0]).toMatch(/must be true or false/);
-    expect(formFor(profile).map(f => f.name).slice(0, 2)).toEqual(["copies", "fit-to-margins"]);
+    expect(validateJobOptions({ "fit-to-page": "false" }, profile)).toEqual([]);
+    expect(validateJobOptions({ "fit-to-page": "sometimes" }, profile)[0]).toMatch(/must be true or false/);
+    // Fitting to the sheet is what a driver does by default, so the form starts with it on.
+    expect(formFor(profile).find(f => f.name === "fit-to-page")?.default).toBe("true");
+    expect(formFor(profile).map(f => f.name).slice(0, 3)).toEqual(["copies", "fit-to-page", "fit-to-margins"]);
     expect(validateJobOptions({ sides: "one-sided" }, profile)[0]).toMatch(/"sides" is not used in PostScript mode/);
     expect(validateJobOptions({ "ppd:Stapling": "SS" }, { ...profile, mode: "ipp" })[0]).toMatch(/needs PostScript mode/);
+  });
+});
+
+describe("warning that a page will be cut", () => {
+  const profile = { caps: {}, ppd, mode: "postscript" as const };
+  const a3 = { width: 842, height: 1191 };
+
+  it("warns only when a page larger than the paper is printed at its own size", () => {
+    expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "false" }, profile, a3)[0]).toMatch(/larger than A4/);
+    // Fitted, the page is scaled to the sheet and cannot overflow it.
+    expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "true" }, profile, a3)).toEqual([]);
+    expect(jobWarnings({ "ppd:PageSize": "A3", "fit-to-page": "false" }, profile, a3)).toEqual([]);
+    // Printers turn the sheet, so a landscape page on portrait paper of the same size still fits.
+    expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "false" }, profile, { width: 842, height: 595 })).toEqual([]);
+    expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "false" }, profile, undefined)).toEqual([]);
+    expect(jobWarnings({ "fit-to-page": "false" }, { caps: {}, ppd, mode: "ipp" }, a3)).toEqual([]);
   });
 });
 
@@ -244,6 +286,21 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
       expect(document.length).toBeGreaterThan(64 * 1024 * 1024);
       const job = assemblePostScript({ ppd, chosen: {}, jobName: "photos.pdf", userName: "pat", document });
       expect(job.length).toBeGreaterThan(document.length);
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("rasterises transparency at the engine's resolution, not ps2write's 720 dpi default", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-resolution-"));
+    try {
+      const file = path.join(dir, "art.pdf");
+      await writeFile(file, transparentPdf());
+      const paper = { width: 842, height: 1191 };
+      const deflt = await pdfToPostScript(file, { paper });
+      const engine = await pdfToPostScript(file, { paper, resolution: { x: 300, y: 300 } });
+      expect(engine.length).toBeLessThan(deflt.length / 2);
     }
     finally {
       await rm(dir, { recursive: true, force: true });

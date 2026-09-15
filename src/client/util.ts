@@ -1,4 +1,4 @@
-import type { FormField } from "../shared/types.js";
+import type { DocumentSize, FormField } from "../shared/types.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type OptionValues = Record<string, unknown>;
@@ -11,6 +11,24 @@ export function defaultsFrom(fields: FormField[]): OptionValues {
       out[f.name] = f.default;
   }
   return out;
+}
+
+const MEDIA_BOX = /\/MediaBox\s*\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]/g;
+
+/**
+ * The largest page box a PDF states in the clear, to measure against the paper before printing.
+ * Pages held in compressed object streams are invisible here, and simply go unmeasured.
+ */
+export function pdfPageSize(bytes: Uint8Array): DocumentSize | null {
+  const text = new TextDecoder("latin1").decode(bytes);
+  let largest: DocumentSize | null = null;
+  for (const box of text.matchAll(MEDIA_BOX)) {
+    const width = Math.abs(Number(box[3]) - Number(box[1]));
+    const height = Math.abs(Number(box[4]) - Number(box[2]));
+    if (width > 0 && height > 0 && (!largest || width * height > largest.width * largest.height))
+      largest = { width, height };
+  }
+  return largest;
 }
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });

@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import type { FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
+import type { DocumentSize, FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useEffect, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
@@ -10,7 +10,7 @@ import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useJobs } from "../hooks.js";
-import { defaultsFrom, describeReason, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
+import { defaultsFrom, describeReason, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -45,7 +45,18 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const [presetId, setPresetId] = useState<number | null>(null);
   const [options, setOptions] = useState<OptionValues>({});
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [documentSize, setDocumentSize] = useState<DocumentSize | null>(null);
   const { error, fail, clear } = useAsyncError();
+
+  // Measured once per file, so the form can say a page will be cut before the job is sent.
+  useEffect(() => {
+    let cancelled = false;
+    const measured = file ? file.arrayBuffer().then(bytes => pdfPageSize(new Uint8Array(bytes))) : Promise.resolve(null);
+    measured.then(size => !cancelled && setDocumentSize(size)).catch(() => !cancelled && setDocumentSize(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,8 +77,9 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   useDebounced((current) => {
     if (!fields)
       return;
-    api.validate(printer.id, current).then(setValidation).catch(fail);
-  }, options, 300);
+    const { options: chosen, document } = current as { options: OptionValues; document?: DocumentSize };
+    api.validate(printer.id, chosen, document).then(setValidation).catch(fail);
+  }, { options, ...(documentSize ? { document: documentSize } : {}) }, 300);
 
   function choosePreset(id: number | null) {
     if (!fields)

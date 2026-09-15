@@ -32,8 +32,8 @@ function trustProxyFrom(raw: string | undefined): boolean | string | string[] {
   return raw.includes(",") ? raw.split(",").map(value => value.trim()).filter(Boolean) : raw;
 }
 
-function int(name: string, fallback: number): number {
-  const raw = process.env[name];
+function int(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name];
   if (raw === undefined || raw === "")
     return fallback;
   const n = Number(raw);
@@ -45,18 +45,18 @@ function int(name: string, fallback: number): number {
 export function loadConfig(env = process.env): Config {
   const dataDir = path.resolve(env.DATA_DIR ?? "data");
   return {
-    port: int("PORT", 8080),
+    port: int(env, "PORT", 8080),
     host: env.HOST ?? "0.0.0.0",
     dataDir,
     uploadDir: path.resolve(env.UPLOAD_DIR ?? path.join(dataDir, "uploads")),
     storedDir: path.resolve(env.STORED_DIR ?? path.join(dataDir, "stored")),
     dbPath: path.resolve(env.DB_PATH ?? path.join(dataDir, "printmax.db")),
-    retentionDays: int("RETENTION_DAYS", 7),
-    pollIntervalMs: int("POLL_INTERVAL_MS", 3000),
-    capsRefreshHours: int("CAPS_REFRESH_HOURS", 24),
-    discoveryTimeoutMs: int("DISCOVERY_TIMEOUT_MS", 3000),
-    maxUploadBytes: int("MAX_UPLOAD_MB", 200) * 1024 * 1024,
-    maxPostScriptBytes: int("MAX_POSTSCRIPT_MB", DEFAULT_MAX_OUTPUT_BYTES / (1024 * 1024)) * 1024 * 1024,
+    retentionDays: int(env, "RETENTION_DAYS", 7),
+    pollIntervalMs: int(env, "POLL_INTERVAL_MS", 3000),
+    capsRefreshHours: int(env, "CAPS_REFRESH_HOURS", 24),
+    discoveryTimeoutMs: int(env, "DISCOVERY_TIMEOUT_MS", 3000),
+    maxUploadBytes: int(env, "MAX_UPLOAD_MB", 200) * 1024 * 1024,
+    maxPostScriptBytes: int(env, "MAX_POSTSCRIPT_MB", DEFAULT_MAX_OUTPUT_BYTES / (1024 * 1024)) * 1024 * 1024,
     staticDir: path.resolve(env.STATIC_DIR ?? path.join(import.meta.dirname, "..", "client")),
     setupToken: env.SETUP_TOKEN || null,
     trustProxy: trustProxyFrom(env.TRUST_PROXY),

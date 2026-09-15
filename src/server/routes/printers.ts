@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ProbeResult, ValidationResult } from "../../shared/types.js";
+import type { DocumentSize, ProbeResult, ValidationResult } from "../../shared/types.js";
 import type { Db } from "../db.js";
 import { acknowledgeCapsChange, listCapsChanges, toCapsChangeDto } from "../capsdiff.js";
 import { discoverPrinters } from "../discovery.js";
@@ -8,7 +8,7 @@ import { formFor } from "../form.js";
 import { applyResolvers } from "../ipp/constraints.js";
 import { addPrinter, capsFor, clearPpd, deletePrinter, discoveredCaps, listPrinters, overrideCaps, profileFor, refreshPrinter, requirePrinter, setDefaults, setOverrides, setPpd, setPrintMode, toDto } from "../printers.js";
 import { probeOptions } from "../probe.js";
-import { validateJobOptions } from "../validation.js";
+import { jobWarnings, validateJobOptions } from "../validation.js";
 import { idParam } from "./params.js";
 
 interface AddPrinterBody {
@@ -47,12 +47,14 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
 
   app.post("/api/printers/:id/validate", async (req): Promise<ValidationResult> => {
     const printer = requirePrinter(db, idParam(req.params));
-    const body = (req.body ?? {}) as { options?: unknown };
+    const body = (req.body ?? {}) as { options?: unknown; documentSize?: unknown };
     if (typeof body.options !== "object" || body.options === null || Array.isArray(body.options))
       throw new HttpError(400, "options must be an object");
     const options = body.options as Record<string, unknown>;
     const caps = capsFor(printer);
-    const errors = validateJobOptions(options, profileFor(printer));
+    const profile = profileFor(printer);
+    const errors = validateJobOptions(options, profile);
+    const warnings = jobWarnings(options, profile, documentSize(body.documentSize));
     let resolved = options;
     if (errors.length > 0) {
       try {
@@ -62,8 +64,16 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
         resolved = options;
       }
     }
-    return { errors, resolved };
+    return { errors, warnings, resolved };
   });
+}
+
+/** The page size the client read out of the PDF, ignored unless it is a pair of positive numbers. */
+function documentSize(raw: unknown): DocumentSize | undefined {
+  const size = raw as DocumentSize | undefined;
+  if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0)
+    return undefined;
+  return { width: size.width, height: size.height };
 }
 
 /** Routes restricted to admins. */

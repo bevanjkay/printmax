@@ -10,7 +10,8 @@ const run = promisify(execFile);
 
 /**
  * ps2write writes every image at its source resolution with no lossy re-encoding, so a colour page
- * costs a few megabytes whatever the PDF weighed: the ceiling is on pages, not on the upload.
+ * costs a few megabytes whatever the PDF weighed: the ceiling is on pages, not on the upload. A page
+ * it cannot keep as vectors is rasterised whole instead, and then `resolution` sets what it costs.
  */
 export const DEFAULT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
 
@@ -37,6 +38,11 @@ export interface ConvertOptions {
   maxOutputBytes?: number;
   /** Force this paper size (points) and scale pages to fit it, as a driver's "fit to paper" does. */
   paper?: { width: number; height: number };
+  /**
+   * Dots per inch for the raster ps2write cannot keep as vectors. Left unset it uses its own 720 dpi
+   * default, which on a large sheet costs hundreds of megabytes of detail the engine cannot image.
+   */
+  resolution?: { x: number; y: number };
 }
 
 /**
@@ -63,6 +69,8 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
   const dir = await mkdtemp(path.join(tmpdir(), "printmax-ps-"));
   const out = path.join(dir, "document.ps");
   const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dPDFSTOPONERROR", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
+  if (opts.resolution)
+    args.push(`-r${Math.round(opts.resolution.x)}x${Math.round(opts.resolution.y)}`);
   if (opts.paper)
     args.push(`-dDEVICEWIDTHPOINTS=${Math.round(opts.paper.width)}`, `-dDEVICEHEIGHTPOINTS=${Math.round(opts.paper.height)}`, "-dFIXEDMEDIA", "-dPDFFitPage");
   // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.

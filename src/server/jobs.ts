@@ -7,7 +7,7 @@ import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
 import { copyFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { FIT_TO_MARGINS } from "../shared/attributes.js";
+import { FIT_TO_MARGINS, FIT_TO_PAGE } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError } from "./ipp/client.js";
@@ -238,12 +238,15 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
 async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
   const chosen = ppdChoices(options);
-  const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
+  // Absent, the option predates the toggle, and every such job was converted fitted.
+  const fitToPage = options[FIT_TO_PAGE] === undefined || options[FIT_TO_PAGE] === true || options[FIT_TO_PAGE] === "true";
+  const paper = fitToPage && chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
   const keepMargins = options[FIT_TO_MARGINS] === true || options[FIT_TO_MARGINS] === "true";
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
   const document = await pdfToPostScript(job.file_path!, {
     signal,
     ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
+    ...(ppd.resolution ? { resolution: ppd.resolution } : {}),
     ...(paper ? { paper } : {}),
     ...(margins ? { margins } : {}),
   });
