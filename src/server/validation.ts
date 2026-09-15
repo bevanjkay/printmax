@@ -5,7 +5,7 @@
  */
 import type { DocumentSize } from "../shared/types.js";
 import type { PrinterProfile } from "./printers.js";
-import { FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX } from "../shared/attributes.js";
+import { FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX, toggleIsOn } from "../shared/attributes.js";
 import { checkConstraints, describeViolation } from "./ipp/constraints.js";
 import { validateOptions } from "./ipp/options.js";
 import { ppdChoices, validatePpdOptions } from "./ppd/form.js";
@@ -53,7 +53,7 @@ function mm(points: number): number {
 export function jobWarnings(options: Record<string, unknown>, profile: PrinterProfile, document: DocumentSize | undefined): string[] {
   if (profile.mode !== "postscript" || !profile.ppd || !document)
     return [];
-  if (options[FIT_TO_PAGE] === undefined || options[FIT_TO_PAGE] === true || options[FIT_TO_PAGE] === "true")
+  if (toggleIsOn(options, profile.optionDefaults, FIT_TO_PAGE, true))
     return [];
   const size = ppdChoices(options).PageSize;
   const paper = size ? profile.ppd.paperDimensions[size] : undefined;

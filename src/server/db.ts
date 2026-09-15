@@ -130,6 +130,9 @@ export const MIGRATIONS: string[] = [
   ) WHERE group_name IS NOT NULL;
   ALTER TABLE stored_jobs DROP COLUMN group_name;
   `,
+  `
+  ALTER TABLE printers ADD COLUMN option_defaults TEXT NOT NULL DEFAULT '{}';
+  `,
 ];
 
 export function openDb(file: string): Db {
