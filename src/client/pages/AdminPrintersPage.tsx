@@ -537,7 +537,7 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
           <dd className="num">{printer.capsFetchedAt ? formatDate(printer.capsFetchedAt) : "never"}</dd>
         </dl>
         <PostScriptMode printer={printer} onChanged={onChanged} />
-        {printer.printMode !== "postscript" && <Defaults printer={printer} onChanged={onChanged} />}
+        <Defaults printer={printer} onChanged={onChanged} />
         <Overrides printer={printer} onChanged={onChanged} />
         {error && <Notice tone="error">{error}</Notice>}
       </div>
