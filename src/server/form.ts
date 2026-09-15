@@ -6,7 +6,7 @@ import type { FormField } from "../shared/types.js";
  */
 import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
 import type { PrinterProfile } from "./printers.js";
-import { ATTRIBUTE_UI, FIT_TO_MARGINS, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
+import { ATTRIBUTE_UI, FIT_TO_MARGINS, FIT_TO_PAGE, HIDDEN_ATTRIBUTES, keywordLabel } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
 import { mediaColMembers } from "./ipp/options.js";
@@ -130,7 +130,15 @@ export function formFor(profile: PrinterProfile): FormField[] {
     choices: [{ value: "false", label: "Off" }, { value: "true", label: "On" }],
     default: "false",
   };
-  return [copies, margins, ...ppdFields(profile.ppd)];
+  const page: FormField = {
+    name: FIT_TO_PAGE,
+    label: "Fit to paper",
+    widget: "select",
+    help: "Scales each page up or down to the paper size chosen below. Off prints every page at the size it was made.",
+    choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }],
+    default: "true",
+  };
+  return [copies, page, margins, ...ppdFields(profile.ppd)];
 }
 
 /** Initial option map for a printer: every field's default, in option-map form. */

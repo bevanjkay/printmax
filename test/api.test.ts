@@ -116,7 +116,7 @@ describe("aPI", () => {
 
     it("validates option maps and echoes them back when nothing needs resolving", async () => {
       const ok = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { sides: "two-sided-long-edge", copies: 2 } } }));
-      expect(ok.json()).toEqual({ errors: [], resolved: { sides: "two-sided-long-edge", copies: 2 } });
+      expect(ok.json()).toEqual({ errors: [], warnings: [], resolved: { sides: "two-sided-long-edge", copies: 2 } });
       const bad = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { copies: 5000 } } }));
       expect(bad.json().errors).toEqual(["\"copies\" must be between 1 and 999"]);
     });
@@ -233,6 +233,12 @@ describe("aPI", () => {
       const listed = (await app.inject(as(adminCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();
       expect(listed.find(p => p.name === "Duplex draft")?.problems[0]).toMatch(/not used in PostScript mode/);
       expect(listed.find(p => p.name === "Booklet")?.problems).toEqual([]);
+
+      const size = { width: 842, height: 1191 };
+      const cut = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { "ppd:PageSize": "A4", "fit-to-page": "false" }, documentSize: size } }));
+      expect(cut.json().warnings[0]).toMatch(/larger than A4/);
+      const fitted = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { "ppd:PageSize": "A4", "fit-to-page": "true" }, documentSize: size } }));
+      expect(fitted.json().warnings).toEqual([]);
 
       expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/presets/${booklet.json<PresetDto>().id}` }))).statusCode).toBe(204);
       const off = await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${printerId}/ppd` }));

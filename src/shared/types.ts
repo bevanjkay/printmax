@@ -78,8 +78,16 @@ export interface FormField {
   max?: number;
 }
 
+/** A document's page size in points, as the client read it from the PDF. */
+export interface DocumentSize {
+  width: number;
+  height: number;
+}
+
 export interface ValidationResult {
   errors: string[];
+  /** Advisory problems that do not block the job. */
+  warnings: string[];
   /** Options after applying the printer's own resolvers; equals the input when nothing conflicted. */
   resolved: Record<string, unknown>;
 }

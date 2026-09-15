@@ -102,7 +102,8 @@ Obtain that certificate through a trusted channel; its subject alternative name 
 printer URI. Existing self-signed IPPS printers need this configuration after upgrading.
 
 PostScript mode invokes Ghostscript's PDF interpreter directly and stops conversion after 60 seconds
-or 64 MiB of generated output. Cancellation terminates an active conversion. These bounds are separate
+or `MAX_POSTSCRIPT_MB` of generated output. Conversion runs at the PPD's `*DefaultResolution`, so a
+page `ps2write` has to rasterise costs what the engine can image rather than its 720 dpi default. Cancellation terminates an active conversion. These bounds are separate
 from the upload size limit. Temporary upload files abandoned by a crash are removed after 24 hours;
 in-flight uploads are excluded.
 
@@ -143,6 +144,9 @@ and switch the printer to **PostScript via PPD**. From then on:
 - copies are asked for inside the PostScript (`NumCopies`), not as an IPP attribute, since a
   printer in this mode reads the document and ignores the attributes;
 - PDF is the only accepted upload while the mode is on;
+- **Fit to paper** (on by default) scales each page to the chosen paper, the way a driver does.
+  Turn it off to print every page at the size it was made; the form then warns when a page is
+  larger than the paper and would be cut;
 - pages go out edge to edge, so the only clipping is the printer's own unprintable strip. Turn on
   **Keep printer margins** (per job or in a preset) to shrink each page uniformly into the PPD's
   imageable area instead, the way the vendor driver does.
