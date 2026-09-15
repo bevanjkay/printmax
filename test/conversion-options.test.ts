@@ -8,7 +8,7 @@ import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, submitJob } from "../src/server/jobs.js";
 import { pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
-vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn() }));
+vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn(), largestPdfPage: vi.fn().mockResolvedValue({ width: 842, height: 595 }) }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
 
 const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
@@ -42,4 +42,10 @@ it("forces the chosen sheet either way, so the printer asks for the paper PageSi
   const paper = { width: 595, height: 842 };
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).toMatchObject({ paper, fitToPaper: true });
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ paper, fitToPaper: false });
+});
+
+it("measures the document only when its pages are the ones being placed", async () => {
+  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ documentPage: { width: 842, height: 595 } });
+  // Fitted, every page is scaled to the sheet, so its own size decides nothing.
+  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).not.toHaveProperty("documentPage");
 });

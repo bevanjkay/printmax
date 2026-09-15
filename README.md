@@ -145,8 +145,9 @@ and switch the printer to **PostScript via PPD**. From then on:
   printer in this mode reads the document and ignores the attributes;
 - PDF is the only accepted upload while the mode is on;
 - **Fit to paper** (on by default) scales each page to the chosen paper, the way a driver does.
-  Turn it off to print every page at the size it was made; the form then warns when a page is
-  larger than the paper and would be cut;
+  Turn it off to print every page at the size it was made, centred on the sheet and turned a
+  quarter when that is the only way it fits; the form then warns when a page is larger than the
+  paper and would be cut;
 - pages go out edge to edge, so the only clipping is the printer's own unprintable strip. Turn on
   **Keep printer margins** (per job or in a preset) to shrink each page uniformly into the PPD's
   imageable area instead, the way the vendor driver does.
