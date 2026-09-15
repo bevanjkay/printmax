@@ -66,6 +66,24 @@ export function useDebounced(fn: (value: OptionValues) => void, value: OptionVal
   }, [serialised, delayMs]);
 }
 
+/**
+ * Asks the browser to confirm before the tab is closed or navigated away from, for as long as
+ * something must not be interrupted. The wording is the browser's own; a page can only ask.
+ */
+export function useWarnBeforeLeaving(active: boolean): void {
+  useEffect(() => {
+    if (!active)
+      return;
+    const confirmLeaving = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Still required by browsers that predate preventDefault being enough on its own.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", confirmLeaving);
+    return () => window.removeEventListener("beforeunload", confirmLeaving);
+  }, [active]);
+}
+
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger" | "progress";
 
 const STATE_TONES: Record<string, Tone> = {

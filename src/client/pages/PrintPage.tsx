@@ -10,7 +10,7 @@ import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useJobs } from "../hooks.js";
-import { defaultsFrom, describeReason, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced } from "../util.js";
+import { defaultsFrom, describeReason, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -232,6 +232,8 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
   const { jobs, error, refresh } = useJobs({ all: false, limit: 5, refreshKey: jobsKey });
   // The job list is polling anyway, so the panel can follow the job the printer is actually doing.
   const live = submitted === null ? null : jobs?.find(j => j.id === submitted.id) ?? submitted;
+  // Closing the tab mid-upload loses the job with no trace of it on either side.
+  useWarnBeforeLeaving(phase === "sending");
 
   /** Back to the form, with the settings as they were or as the printer's presets have them. */
   function printAnother(keepSettings: boolean) {
