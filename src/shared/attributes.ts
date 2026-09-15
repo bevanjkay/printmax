@@ -127,6 +127,17 @@ export const FIT_TO_MARGINS = "fit-to-margins";
 /** printmax's own PostScript-mode option: scale each page to the chosen paper rather than print it at its own size. */
 export const FIT_TO_PAGE = "fit-to-page";
 
+/**
+ * A printmax toggle as the job, then the printer's own setting, then the built-in default decide it.
+ * A job queued before a toggle existed says nothing, and must keep behaving as it did.
+ */
+export function toggleIsOn(options: Record<string, unknown>, defaults: Record<string, unknown>, name: string, builtIn: boolean): boolean {
+  const value = options[name] ?? defaults[name];
+  if (value === undefined || value === null || value === "")
+    return builtIn;
+  return value === true || value === "true";
+}
+
 export function isPrimaryOption(name: string): boolean {
   if (name === FIT_TO_MARGINS || name === FIT_TO_PAGE)
     return true;

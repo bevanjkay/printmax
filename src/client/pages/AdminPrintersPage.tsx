@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import type { CapsChangeDto, DiscoveredPrinter, FormField, PrinterDto } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
-import { keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
+import { FIT_TO_MARGINS, FIT_TO_PAGE, keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
 import { enumValue } from "../../shared/enums.js";
 import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
@@ -197,7 +197,7 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
         setOverrides(o);
       })
       .catch(fail);
-  }, [printer.id, printer.overrideCount, fail]);
+  }, [printer.id, printer.overrideCount, printer.optionDefaults, fail]);
 
   const listAttrs = Object.entries(discovered)
     .filter(([k, a]) => k.endsWith("-supported") && ["keyword", "enum", "mimeMediaType", "integer"].includes(a.type))
@@ -378,7 +378,8 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
 
 const labels = (xs: string[]) => xs.map(keywordLabel).join(", ") || "—";
 
-const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested"];
+const OWN_OPTIONS: string[] = [FIT_TO_PAGE, FIT_TO_MARGINS];
+const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested", FIT_TO_PAGE, FIT_TO_MARGINS];
 
 /** Per-printer defaults for the print form, e.g. A4 instead of the printer's own Letter. Stored as `<attribute>-default` overrides. */
 function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () => void }) {
@@ -389,11 +390,16 @@ function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () =
   const [saved, setSaved] = useState(false);
   const { error, fail, clear } = useAsyncError();
 
+  // Serialised so the effect keys on what the printer actually holds, not on a fresh object each render.
+  const ownDefaults = JSON.stringify(printer.optionDefaults);
+
   useEffect(() => {
     Promise.all([api.getForm(printer.id), api.getCaps(printer.id, "overrides")])
       .then(([f, o]) => {
         setFields(f);
         const names = new Set(Object.keys(o).filter(k => k.endsWith("-default")).map(k => k.slice(0, -"-default".length)));
+        for (const name of Object.keys(JSON.parse(ownDefaults) as Record<string, string>))
+          names.add(name);
         setOverridden(names);
         const initial: Record<string, string> = {};
         for (const field of f) {
@@ -403,7 +409,7 @@ function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () =
         setDraft(initial);
       })
       .catch(fail);
-  }, [printer.id, printer.overrideCount, fail]);
+  }, [printer.id, printer.overrideCount, ownDefaults, fail]);
 
   const editable = fields.filter(f => DEFAULTABLE.includes(f.name) && f.widget === "select" && (f.choices?.length ?? 0) > 1);
   if (editable.length === 0)
@@ -448,7 +454,7 @@ function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () =
                 onChange={e => setDraft({ ...draft, [f.name]: e.target.value })}
               >
                 <option value="">
-                  {`Printer's own${!overridden.has(f.name) && f.default !== undefined ? ` (${f.choices?.find(c => String(c.value) === String(f.default))?.label ?? String(f.default)})` : ""}`}
+                  {`${OWN_OPTIONS.includes(f.name) ? "printmax's own" : "Printer's own"}${!overridden.has(f.name) && f.default !== undefined ? ` (${f.choices?.find(c => String(c.value) === String(f.default))?.label ?? String(f.default)})` : ""}`}
                 </option>
                 {f.choices?.map(c => <option key={String(c.value)} value={String(c.value)}>{c.label}</option>)}
               </select>

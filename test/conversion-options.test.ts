@@ -13,11 +13,11 @@ vi.mock("../src/server/ipp/operations.js", async original => ({ ...await origina
 
 const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 
-function convert(options: Record<string, unknown>) {
+function convert(options: Record<string, unknown>, optionDefaults: Record<string, unknown> = {}) {
   const db = openDb(":memory:");
   const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
-  db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode) VALUES (?, ?, ?, ?, ?)")
-    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), ppd, "postscript");
+  db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode, option_defaults) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), ppd, "postscript", JSON.stringify(optionDefaults));
   const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: "/unused/test.pdf", byteSize: 10, documentFormat: "application/pdf", options });
   return submitJob(db, job as JobRow).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
 }
@@ -31,7 +31,15 @@ it("converts at the engine's resolution so a transparent page costs what the pri
   expect(await convert({ "ppd:PageSize": "A4" })).toMatchObject({ resolution: { x: 600, y: 600 } });
 });
 
-it("scales pages to the chosen paper only while fit to paper is on", async () => {
-  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).toMatchObject({ paper: { width: 595, height: 842 } });
-  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).not.toHaveProperty("paper");
+it("falls back to the printer's own fit to paper when the job does not say", async () => {
+  expect(await convert({ "ppd:PageSize": "A4" }, { "fit-to-page": "false" })).toMatchObject({ fitToPaper: false });
+  expect(await convert({ "ppd:PageSize": "A4" }, {})).toMatchObject({ fitToPaper: true });
+  // A job that states it still wins over the printer's default.
+  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" }, { "fit-to-page": "false" })).toMatchObject({ fitToPaper: true });
+});
+
+it("forces the chosen sheet either way, so the printer asks for the paper PageSize chose", async () => {
+  const paper = { width: 595, height: 842 };
+  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).toMatchObject({ paper, fitToPaper: true });
+  expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ paper, fitToPaper: false });
 });

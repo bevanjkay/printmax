@@ -58,6 +58,8 @@ export interface PrinterDto {
   /** "postscript" sends jobs as the PPD's PJL-wrapped PostScript; needs a PPD. */
   printMode: PrintMode;
   ppd: PpdSummary | null;
+  /** printmax's own options fixed for this printer, which its IPP capabilities cannot hold. */
+  optionDefaults: Record<string, string>;
 }
 
 export interface FormChoice {

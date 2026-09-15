@@ -4,6 +4,7 @@ import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import { unlinkSync } from "node:fs";
+import { FIT_TO_MARGINS, FIT_TO_PAGE } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
@@ -29,6 +30,7 @@ export interface PrinterRow {
   created_at: string;
   ppd: string | null;
   print_mode: PrintMode;
+  option_defaults: string;
 }
 
 /** Everything validation and the form need to know about a printer. */
@@ -36,7 +38,12 @@ export interface PrinterProfile {
   caps: IppAttributes;
   ppd: ParsedPpd | null;
   mode: PrintMode;
+  /** printmax's own options set for this printer, which the IPP capabilities cannot describe. */
+  optionDefaults: Record<string, unknown>;
 }
+
+/** printmax's own job options, which have no `<attribute>-supported` to validate a default against. */
+const OWN_OPTIONS = new Set<string>([FIT_TO_PAGE, FIT_TO_MARGINS]);
 
 const ppdCache = new Map<number, { text: string; parsed: ParsedPpd }>();
 
@@ -51,8 +58,17 @@ export function parsedPpdFor(printer: PrinterRow): ParsedPpd | null {
   return parsed;
 }
 
+export function optionDefaultsFor(printer: PrinterRow): Record<string, unknown> {
+  try {
+    return JSON.parse(printer.option_defaults || "{}") as Record<string, unknown>;
+  }
+  catch {
+    return {};
+  }
+}
+
 export function profileFor(printer: PrinterRow): PrinterProfile {
-  return { caps: capsFor(printer), ppd: parsedPpdFor(printer), mode: printer.print_mode };
+  return { caps: capsFor(printer), ppd: parsedPpdFor(printer), mode: printer.print_mode, optionDefaults: optionDefaultsFor(printer) };
 }
 
 export function setPpd(db: Db, id: number, text: unknown): PrinterRow {
@@ -231,8 +247,19 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
   const printer = requirePrinter(db, id);
   const caps = capsFor(printer);
   const overrides = overrideCaps(printer);
+  const own = optionDefaultsFor(printer);
   const problems: string[] = [];
   for (const [name, value] of Object.entries(defaults)) {
+    // printmax's own options are not IPP attributes, so they are kept beside the capability overrides.
+    if (OWN_OPTIONS.has(name)) {
+      if (value === null || value === undefined || value === "")
+        delete own[name];
+      else if (value === true || value === false || value === "true" || value === "false")
+        own[name] = String(value);
+      else
+        problems.push(`"${name}" must be true or false`);
+      continue;
+    }
     if (!/^[a-z][a-z0-9-]*$/.test(name) || name.endsWith("-default"))
       throw new HttpError(400, `"${name}" is not an attribute name`);
     if (value === null || value === undefined || value === "") {
@@ -250,7 +277,7 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
   }
   if (problems.length > 0)
     throw new HttpError(422, problems.join("; "));
-  db.prepare("UPDATE printers SET caps_overrides = ? WHERE id = ?").run(JSON.stringify(overrides), id);
+  db.prepare("UPDATE printers SET caps_overrides = ?, option_defaults = ? WHERE id = ?").run(JSON.stringify(overrides), JSON.stringify(own), id);
   return requirePrinter(db, id);
 }
 
@@ -324,5 +351,6 @@ export function toDto(db: Db, printer: PrinterRow): PrinterDto {
     summary: summarise(capsFor(printer)),
     printMode: printer.print_mode,
     ppd: ppdSummary(parsedPpdFor(printer)),
+    optionDefaults: optionDefaultsFor(printer) as Record<string, string>,
   };
 }

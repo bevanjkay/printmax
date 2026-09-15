@@ -36,8 +36,13 @@ export interface ConvertOptions {
   /** Upper bounds for conversion time and generated PostScript, independent of upload size. */
   timeoutMs?: number;
   maxOutputBytes?: number;
-  /** Force this paper size (points) and scale pages to fit it, as a driver's "fit to paper" does. */
+  /**
+   * Force this paper size (points). Without it each page carries its own size into the PostScript,
+   * and the printer asks for that paper rather than the one the PPD's PageSize chose.
+   */
   paper?: { width: number; height: number };
+  /** Scale each page to `paper`, as a driver's "fit to paper" does. Off, pages keep their own size on that sheet. */
+  fitToPaper?: boolean;
   /**
    * Dots per inch for the raster ps2write cannot keep as vectors. Left unset it uses its own 720 dpi
    * default, which on a large sheet costs hundreds of megabytes of detail the engine cannot image.
@@ -71,8 +76,11 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
   const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dPDFSTOPONERROR", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
   if (opts.resolution)
     args.push(`-r${Math.round(opts.resolution.x)}x${Math.round(opts.resolution.y)}`);
-  if (opts.paper)
-    args.push(`-dDEVICEWIDTHPOINTS=${Math.round(opts.paper.width)}`, `-dDEVICEHEIGHTPOINTS=${Math.round(opts.paper.height)}`, "-dFIXEDMEDIA", "-dPDFFitPage");
+  if (opts.paper) {
+    args.push(`-dDEVICEWIDTHPOINTS=${Math.round(opts.paper.width)}`, `-dDEVICEHEIGHTPOINTS=${Math.round(opts.paper.height)}`, "-dFIXEDMEDIA");
+    if (opts.fitToPaper)
+      args.push("-dPDFFitPage");
+  }
   // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.
   // Pass the path as a string parameter rather than interpolating it into PostScript code.
   args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${opts.margins ? fitInsideMargins(opts.margins) : ""} PDFFile (r) file runpdf`);

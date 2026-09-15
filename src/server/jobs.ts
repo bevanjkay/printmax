@@ -7,7 +7,7 @@ import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
 import { copyFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { FIT_TO_MARGINS, FIT_TO_PAGE } from "../shared/attributes.js";
+import { FIT_TO_MARGINS, FIT_TO_PAGE, toggleIsOn } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError } from "./ipp/client.js";
@@ -191,7 +191,7 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
   conversions.get(db)!.set(job.id, controller);
   try {
     const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
-      ? await postScriptDocument(job, profile.ppd, options, caps, userName, controller.signal, limits)
+      ? await postScriptDocument(job, profile.ppd, options, profile.optionDefaults, caps, userName, controller.signal, limits)
       : { data: await readFile(job.file_path), documentFormat: job.document_format, jobAttributes: buildJobAttributes(options, caps) };
     if (controller.signal.aborted)
       return;
@@ -236,15 +236,17 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
 }
 
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
-async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
+async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, defaults: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
   const chosen = ppdChoices(options);
-  // Absent, the option predates the toggle, and every such job was converted fitted.
-  const fitToPage = options[FIT_TO_PAGE] === undefined || options[FIT_TO_PAGE] === true || options[FIT_TO_PAGE] === "true";
-  const paper = fitToPage && chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
-  const keepMargins = options[FIT_TO_MARGINS] === true || options[FIT_TO_MARGINS] === "true";
+  // The sheet is forced either way: left to itself each page states its own size and the printer
+  // asks for that paper instead of the one PageSize chose. Only the scaling is the user's call.
+  const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
+  const fitToPaper = toggleIsOn(options, defaults, FIT_TO_PAGE, true);
+  const keepMargins = toggleIsOn(options, defaults, FIT_TO_MARGINS, false);
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
   const document = await pdfToPostScript(job.file_path!, {
     signal,
+    fitToPaper,
     ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
     ...(ppd.resolution ? { resolution: ppd.resolution } : {}),
     ...(paper ? { paper } : {}),
