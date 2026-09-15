@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { formFor } from "../src/server/form.js";
 import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/assemble.js";
 import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
-import { ghostscriptAvailable, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { ghostscriptAvailable, largestPdfPage, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
 
@@ -83,6 +83,17 @@ async function box(ps: Buffer): Promise<number[]> {
   finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/** A page of the given size, inked to within 10pt of its edges so its placement can be measured. */
+function pagePdf(width: number, height: number): Buffer {
+  const content = `0 0 0 rg 10 10 ${width - 20} ${height - 20} re f`;
+  return assemblePdf([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << >> /Contents 4 0 R >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ].map(b => Buffer.from(b, "latin1")));
 }
 
 describe("parsePpd", () => {
@@ -310,6 +321,55 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
       await rm(dir, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it("reads the largest page out of a PDF without drawing any of it", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-pages-"));
+    try {
+      const file = path.join(dir, "mixed.pdf");
+      await writeFile(file, pagePdf(842, 595));
+      expect(await largestPdfPage(file)).toEqual({ width: 842, height: 595 });
+      await writeFile(file, Buffer.from("%PDF-1.7\nnot really\n"));
+      expect(await largestPdfPage(file)).toBeNull();
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("centres an unfitted page on the sheet, turning it only when that is the way it fits", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-place-"));
+    const a3 = { width: 842, height: 1191 };
+    try {
+      const upright = path.join(dir, "upright.pdf");
+      await writeFile(upright, pagePdf(420, 595));
+      // A5 fits A3 as it is, so it keeps the way round it was made and is simply centred.
+      const centred = await box(await pdfToPostScript(upright, { paper: a3, documentPage: { width: 420, height: 595 } }));
+      expect(centred[0]).toBeCloseTo((842 - 420) / 2 + 10, -1);
+      expect(centred[1]).toBeCloseTo((1191 - 595) / 2 + 10, -1);
+
+      // A page wider than the sheet only fits turned a quarter, so it is turned and centred.
+      const wide = path.join(dir, "wide.pdf");
+      await writeFile(wide, pagePdf(900, 595));
+      const turned = await box(await pdfToPostScript(wide, { paper: a3, documentPage: { width: 900, height: 595 } }));
+      expect(turned[2]! - turned[0]!).toBeLessThan(turned[3]! - turned[1]!);
+      expect(turned[0]).toBeCloseTo((842 - 595) / 2 + 10, -1);
+      expect(turned[1]).toBeCloseTo((1191 - 900) / 2 + 10, -1);
+
+      // One that fits as it is keeps the way round it was made, sideways sheet or not.
+      const fits = path.join(dir, "fits.pdf");
+      await writeFile(fits, pagePdf(842, 595));
+      const kept = await box(await pdfToPostScript(fits, { paper: a3, documentPage: { width: 842, height: 595 } }));
+      expect(kept[2]! - kept[0]!).toBeGreaterThan(kept[3]! - kept[1]!);
+
+      // Left to Ghostscript the page lands in the corner instead.
+      const corner = await box(await pdfToPostScript(wide, { paper: a3 }));
+      expect(corner[0]).toBeCloseTo(10, -1);
+      expect(corner[1]).toBeCloseTo(10, -1);
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("converts a PDF to DSC PostScript with one %%Page per page, forcing the paper when asked", async () => {
     const ps = (await pdfToPostScript(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname, { paper: { width: 595, height: 842 } })).toString("latin1");

@@ -44,6 +44,11 @@ export interface ConvertOptions {
   /** Scale each page to `paper`, as a driver's "fit to paper" does. Off, pages keep their own size on that sheet. */
   fitToPaper?: boolean;
   /**
+   * The document's page size, which lets an unfitted page be centred on `paper` and turned to suit
+   * it. Left unset such a page sits in the sheet's bottom-left corner, where Ghostscript puts it.
+   */
+  documentPage?: { width: number; height: number };
+  /**
    * Dots per inch for the raster ps2write cannot keep as vectors. Left unset it uses its own 720 dpi
    * default, which on a large sheet costs hundreds of megabytes of detail the engine cannot image.
    */
@@ -67,6 +72,67 @@ function fitInsideMargins(m: NonNullable<ConvertOptions["margins"]>): string {
   ].join(" ");
 }
 
+/**
+ * Places a page at its own size on the sheet: turned a quarter when that is the only way it fits,
+ * shrunk only when margins are being kept, and centred either way. Scales are capped at 1 before
+ * they are compared, so a page that already fits both ways is left the way round it was made.
+ */
+function placeOnPaper(page: NonNullable<ConvertOptions["documentPage"]>, margins: ConvertOptions["margins"]): string {
+  const n = (v: number) => (Math.round(v * 100) / 100).toString();
+  const m = margins ?? { left: 0, bottom: 0, right: 0, top: 0 };
+  return [
+    `/PW ${n(page.width)} def /PH ${n(page.height)} def`,
+    `/L ${n(m.left)} def /B ${n(m.bottom)} def /R ${n(m.right)} def /T ${n(m.top)} def`,
+    "<< /Install {",
+    "  currentpagedevice /PageSize get aload pop /SH exch def /SW exch def",
+    "  /AW SW L sub R sub def /AH SH B sub T sub def",
+    "  /SU AW PW div AH PH div 2 copy gt { exch } if pop def SU 1 gt { /SU 1 def } if",
+    "  /SR AW PH div AH PW div 2 copy gt { exch } if pop def SR 1 gt { /SR 1 def } if",
+    "  SR SU gt { /FW PH def /FH PW def /ROT true def /S SR def } { /FW PW def /FH PH def /ROT false def /S SU def } ifelse",
+    margins ? "" : "  /S 1 def",
+    "  /OX L AW FW S mul sub 2 div add def /OY B AH FH S mul sub 2 div add def",
+    "  ROT { OX FW S mul add OY translate 90 rotate } { OX OY translate } ifelse",
+    "  S S scale",
+    "} bind >> setpagedevice",
+  ].join(" ");
+}
+
+/** Reads every page's box and rotation without drawing any of it. */
+const PAGE_BOXES = "PDFFile (r) file runpdfbegin 1 1 pdfpagecount { pdfgetpage dup /MediaBox get aload pop"
+  + " /y1 exch def /x1 exch def /y0 exch def /x0 exch def /Rotate .knownget not { 0 } if /rot exch def"
+  + " x1 x0 sub 20 string cvs print ( ) print y1 y0 sub 20 string cvs print ( ) print rot 20 string cvs print (\n) print flush } for runpdfend";
+
+/**
+ * The largest page in a PDF, in points, turned as its own /Rotate asks. Best effort: a document
+ * Ghostscript cannot walk simply goes unmeasured, and its pages are placed as they always were.
+ */
+export async function largestPdfPage(pdfPath: string, opts: Pick<ConvertOptions, "signal" | "timeoutMs"> = {}): Promise<{ width: number; height: number } | null> {
+  const file = path.resolve(pdfPath);
+  try {
+    const { stdout } = await run("gs", ["-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dSAFER", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", PAGE_BOXES], {
+      encoding: "utf8",
+      timeout: opts.timeoutMs ?? 30_000,
+      maxBuffer: MAX_MESSAGE_BYTES,
+      killSignal: "SIGKILL",
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    let largest: { width: number; height: number } | null = null;
+    for (const line of stdout.split("\n")) {
+      const [w, h, rot] = line.trim().split(/\s+/).map(Number);
+      if (!w || !h || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0)
+        continue;
+      const turned = Math.abs(Math.round((rot ?? 0) / 90) % 2) === 1;
+      const size = turned ? { width: h, height: w } : { width: w, height: h };
+      if (!largest || size.width * size.height > largest.width * largest.height)
+        largest = size;
+    }
+    return largest;
+  }
+  catch {
+    return null;
+  }
+}
+
 export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}): Promise<Buffer> {
   const file = path.resolve(pdfPath);
   // A booklet's PostScript runs to hundreds of megabytes, far past what a pipe buffer can hold,
@@ -83,7 +149,12 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
   }
   // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.
   // Pass the path as a string parameter rather than interpolating it into PostScript code.
-  args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${opts.margins ? fitInsideMargins(opts.margins) : ""} PDFFile (r) file runpdf`);
+  // An unfitted page is placed by us, margins and all; a fitted one is already on the sheet and only
+  // needs the margin shrink. Both are one Install hook, because the second would replace the first.
+  const place = opts.paper && !opts.fitToPaper && opts.documentPage
+    ? placeOnPaper(opts.documentPage, opts.margins)
+    : opts.margins ? fitInsideMargins(opts.margins) : "";
+  args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${place} PDFFile (r) file runpdf`);
   try {
     try {
       await run("gs", args, {

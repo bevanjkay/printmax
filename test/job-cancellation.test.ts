@@ -7,7 +7,7 @@ import { printJob } from "../src/server/ipp/operations.js";
 import { cancelJob, createJob, requireJob, startJobWorker } from "../src/server/jobs.js";
 import { pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
-vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn() }));
+vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn(), largestPdfPage: vi.fn().mockResolvedValue({ width: 842, height: 595 }) }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
 
 it("cancels an active conversion without printing it and continues to the next queued job", async () => {
