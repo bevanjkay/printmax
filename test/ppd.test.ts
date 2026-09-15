@@ -71,6 +71,20 @@ function transparentPdf(): Buffer {
   return assemblePdf(bodies);
 }
 
+/** The ink bounding box of a PostScript document's first page, to see what a transform did to it. */
+async function box(ps: Buffer): Promise<number[]> {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-bbox-"));
+  const file = path.join(dir, "page.ps");
+  await writeFile(file, ps);
+  try {
+    const { stderr } = await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=bbox", "-dFirstPage=1", "-dLastPage=1", file]);
+    return /%%BoundingBox: (\d+) (\d+) (\d+) (\d+)/.exec(stderr)!.slice(1).map(Number);
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 describe("parsePpd", () => {
   it("reads model, JCL wrapper with hex escapes, groups, defaults and order", () => {
     expect(ppd.nickName).toBe("TOSHIBA ColorMFP");
@@ -173,7 +187,7 @@ describe("assembling the driver's job", () => {
 });
 
 describe("pPD options as a form and in validation", () => {
-  const profile = { caps: {}, ppd, mode: "postscript" as const };
+  const profile = { caps: {}, ppd, mode: "postscript" as const, optionDefaults: {} };
 
   it("turns user options into ppd: fields with the PPD's own labels and defaults, hiding installable ones", () => {
     const fields = ppdFields(ppd);
@@ -205,13 +219,15 @@ describe("pPD options as a form and in validation", () => {
     // Fitting to the sheet is what a driver does by default, so the form starts with it on.
     expect(formFor(profile).find(f => f.name === "fit-to-page")?.default).toBe("true");
     expect(formFor(profile).map(f => f.name).slice(0, 3)).toEqual(["copies", "fit-to-page", "fit-to-margins"]);
+    // An admin's choice for the printer becomes what the form starts on.
+    expect(formFor({ ...profile, optionDefaults: { "fit-to-page": "false" } }).find(f => f.name === "fit-to-page")?.default).toBe("false");
     expect(validateJobOptions({ sides: "one-sided" }, profile)[0]).toMatch(/"sides" is not used in PostScript mode/);
     expect(validateJobOptions({ "ppd:Stapling": "SS" }, { ...profile, mode: "ipp" })[0]).toMatch(/needs PostScript mode/);
   });
 });
 
 describe("warning that a page will be cut", () => {
-  const profile = { caps: {}, ppd, mode: "postscript" as const };
+  const profile = { caps: {}, ppd, mode: "postscript" as const, optionDefaults: {} };
   const a3 = { width: 842, height: 1191 };
 
   it("warns only when a page larger than the paper is printed at its own size", () => {
@@ -222,7 +238,7 @@ describe("warning that a page will be cut", () => {
     // Printers turn the sheet, so a landscape page on portrait paper of the same size still fits.
     expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "false" }, profile, { width: 842, height: 595 })).toEqual([]);
     expect(jobWarnings({ "ppd:PageSize": "A4", "fit-to-page": "false" }, profile, undefined)).toEqual([]);
-    expect(jobWarnings({ "fit-to-page": "false" }, { caps: {}, ppd, mode: "ipp" }, a3)).toEqual([]);
+    expect(jobWarnings({ "fit-to-page": "false" }, { caps: {}, ppd, mode: "ipp", optionDefaults: {} }, a3)).toEqual([]);
   });
 });
 
@@ -253,18 +269,6 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
 
   it("shrinks and centres each page inside the printer's margins when asked", async () => {
     const pdf = new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname;
-    const box = async (ps: Buffer) => {
-      const dir = await mkdtemp(path.join(tmpdir(), "printmax-bbox-"));
-      const file = path.join(dir, "page.ps");
-      await writeFile(file, ps);
-      try {
-        const { stderr } = await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=bbox", "-dFirstPage=1", "-dLastPage=1", file]);
-        return /%%BoundingBox: (\d+) (\d+) (\d+) (\d+)/.exec(stderr)!.slice(1).map(Number);
-      }
-      finally {
-        await rm(dir, { recursive: true, force: true });
-      }
-    };
     const edge = await box(await pdfToPostScript(pdf));
     const kept = await box(await pdfToPostScript(pdf, { margins: { left: 12, bottom: 12, right: 12, top: 12 } }));
     expect(edge[0]).toBeLessThan(20);
@@ -312,5 +316,17 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
     expect(ps.startsWith("%!PS-Adobe")).toBe(true);
     expect(ps.match(/^%%Page:/gm)).toHaveLength(8);
     expect(ps).toMatch(/^%%BoundingBox: 0 0 595 842/m);
+  });
+
+  it("puts the pages on the chosen sheet unscaled, so the printer is not asked for the document's own paper", async () => {
+    const pdf = new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname;
+    const a3 = { width: 842, height: 1191 };
+    const unfitted = (await pdfToPostScript(pdf, { paper: a3 })).toString("latin1");
+    const fitted = (await pdfToPostScript(pdf, { paper: a3, fitToPaper: true })).toString("latin1");
+    // Both are A3; only the fitted one grows the page to fill it.
+    expect(unfitted).toMatch(/^%%BoundingBox: 0 0 842 1191/m);
+    expect(fitted).toMatch(/^%%BoundingBox: 0 0 842 1191/m);
+    const ink = async (ps: string) => (await box(Buffer.from(ps, "latin1")))[2]!;
+    expect(await ink(fitted)).toBeGreaterThan(await ink(unfitted) * 1.2);
   });
 });

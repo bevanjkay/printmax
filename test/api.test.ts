@@ -240,6 +240,16 @@ describe("aPI", () => {
       const fitted = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { "ppd:PageSize": "A4", "fit-to-page": "true" }, documentSize: size } }));
       expect(fitted.json().warnings).toEqual([]);
 
+      // printmax's own options are not IPP attributes, so the printer keeps them beside its capabilities.
+      const fixed = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "fit-to-page": "false" } }));
+      expect(fixed.statusCode, fixed.body).toBe(200);
+      expect(fixed.json().optionDefaults).toEqual({ "fit-to-page": "false" });
+      const started = (await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>();
+      expect(started.find(f => f.name === "fit-to-page")?.default).toBe("false");
+      const nonsense = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "fit-to-page": "sometimes" } }));
+      expect(nonsense.statusCode).toBe(422);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "fit-to-page": "" } }))).json().optionDefaults).toEqual({});
+
       expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/presets/${booklet.json<PresetDto>().id}` }))).statusCode).toBe(204);
       const off = await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
       expect(off.json()).toMatchObject({ printMode: "ipp", ppd: null });
