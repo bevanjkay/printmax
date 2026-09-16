@@ -10,6 +10,11 @@ updates:
       timezone: Australia/Melbourne
     groups:
       npm-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      npm-dependencies-security:
+        applies-to: security-updates
         patterns:
           - "*"
     ignore:
@@ -30,6 +35,11 @@ updates:
       timezone: Australia/Melbourne
     groups:
       gh-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      gh-actions-security:
+        applies-to: security-updates
         patterns:
           - "*"
     cooldown:
@@ -44,6 +54,11 @@ updates:
       timezone: Australia/Melbourne
     groups:
       docker-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      docker-dependencies-security:
+        applies-to: security-updates
         patterns:
           - "*"
     ignore:
@@ -70,6 +85,11 @@ updates:
       timezone: Australia/Melbourne
     groups:
       docker-compose-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      docker-compose-dependencies-security:
+        applies-to: security-updates
         patterns:
           - "*"
     ignore:
@@ -96,6 +116,11 @@ updates:
       timezone: Australia/Melbourne
     groups:
       pip-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      pip-dependencies-security:
+        applies-to: security-updates
         patterns:
           - "*"
     cooldown:
