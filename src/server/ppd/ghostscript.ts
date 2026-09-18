@@ -22,6 +22,17 @@ function mb(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+/**
+ * Ghostscript states its complaint in the first lines and then dumps an operand and dictionary
+ * stack that means nothing to whoever sent the document, so keep its own error lines where it
+ * printed any and otherwise fall back to where it began.
+ */
+function diagnosis(output: string): string {
+  const lines = output.split("\n").map(line => line.trim()).filter(Boolean);
+  const errors = lines.filter(line => line.startsWith("**** Error:") || line.startsWith("Error:"));
+  return (errors.length > 0 ? errors : lines).slice(0, 3).join(" ").replaceAll("**** Error:", "").trim();
+}
+
 let available: Promise<boolean> | undefined;
 
 export function ghostscriptAvailable(): Promise<boolean> {
@@ -139,7 +150,10 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
   // so Ghostscript writes it to a file we then measure before taking it into memory.
   const dir = await mkdtemp(path.join(tmpdir(), "printmax-ps-"));
   const out = path.join(dir, "document.ps");
-  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-dPDFSTOPONERROR", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
+  // No -dPDFSTOPONERROR: a PDF with a stale xref or a bad stream length is what most tools emit, and
+  // every reader of one repairs it silently. Refusing those is refusing ordinary documents; what is
+  // worth refusing is the `**** Error:` below, which is Ghostscript saying the output is not the document.
+  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
   if (opts.resolution)
     args.push(`-r${Math.round(opts.resolution.x)}x${Math.round(opts.resolution.y)}`);
   if (opts.paper) {
@@ -156,14 +170,16 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
     : opts.margins ? fitInsideMargins(opts.margins) : "";
   args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${place} PDFFile (r) file runpdf`);
   try {
+    let messages = "";
     try {
-      await run("gs", args, {
+      const { stderr } = await run("gs", args, {
         encoding: "buffer",
         timeout: opts.timeoutMs ?? 60_000,
         maxBuffer: MAX_MESSAGE_BYTES,
         killSignal: "SIGKILL",
         ...(opts.signal ? { signal: opts.signal } : {}),
       });
+      messages = String(stderr);
     }
     catch (err) {
       const e = err as NodeJS.ErrnoException & { stderr?: Buffer; signal?: string };
@@ -173,8 +189,12 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
         throw new Error("Ghostscript failed: conversion canceled");
       if (e.signal === "SIGKILL")
         throw new Error("Ghostscript failed: conversion timed out");
-      throw new Error(`Ghostscript failed: ${String(e.stderr || e.message).trim().split("\n").slice(-3).join(" ")}`);
+      throw new Error(`Ghostscript failed: ${diagnosis(String(e.stderr || e.message))}`);
     }
+    // Ghostscript reports a page it could not draw and then carries on to exit 0, which would put a
+    // blank sheet through the printer in place of the page.
+    if (messages.includes("**** Error:"))
+      throw new Error(`Ghostscript failed: ${diagnosis(messages)}`);
     const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     const { size } = await stat(out);
     if (size > limit)

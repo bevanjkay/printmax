@@ -96,6 +96,11 @@ function pagePdf(width: number, height: number): Buffer {
   ].map(b => Buffer.from(b, "latin1")));
 }
 
+/** Rewrites a page PDF's bytes, to damage a file the way the tools that made it already do. */
+function damagedPagePdf(damage: (pdf: string) => string): Buffer {
+  return Buffer.from(damage(pagePdf(595, 842).toString("latin1")), "latin1");
+}
+
 describe("parsePpd", () => {
   it("reads model, JCL wrapper with hex escapes, groups, defaults and order", () => {
     expect(ppd.nickName).toBe("TOSHIBA ColorMFP");
@@ -258,11 +263,38 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
     const dir = await mkdtemp(path.join(tmpdir(), "printmax-forged-pdf-"));
     const file = path.join(dir, "forged (document).pdf");
     try {
+      // Were the body executed as PostScript this would loop until the timeout, not fail to parse.
       await writeFile(file, "%PDF\n{} loop\n");
-      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow("Unrecoverable error");
+      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow(/Couldn't initialise file/);
       // A valid-looking header is also only a comment in PostScript. It must not be executed.
       await writeFile(file, "%PDF-1.7\n{} loop\n");
-      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow("Unrecoverable error");
+      await expect(pdfToPostScript(file, { timeoutMs: 2000 })).rejects.toThrow(/Couldn't initialise file/);
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs a PDF whose xref was left stale, as every reader of one does", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-stale-xref-"));
+    try {
+      const file = path.join(dir, "edited.pdf");
+      await writeFile(file, damagedPagePdf(pdf => pdf.replace(/startxref\n\d+/, "startxref\n999999")));
+      const ink = await box(await pdfToPostScript(file));
+      expect(ink[2]! - ink[0]!).toBeGreaterThan(500);
+      expect(ink[3]! - ink[1]!).toBeGreaterThan(700);
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a page it could not draw rather than sending the printer a blank sheet", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-undrawable-"));
+    try {
+      const file = path.join(dir, "lost-contents.pdf");
+      await writeFile(file, damagedPagePdf(pdf => pdf.replace("/Contents 4 0 R", "/Contents 9 0 R")));
+      await expect(pdfToPostScript(file)).rejects.toThrow(/Page drawing error/);
     }
     finally {
       await rm(dir, { recursive: true, force: true });
