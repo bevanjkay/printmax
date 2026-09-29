@@ -125,3 +125,22 @@ updates:
           - "*"
     cooldown:
       default-days: 7
+  - package-ecosystem: deno
+    directories:
+      - /
+      - /**/*
+    schedule:
+      interval: monthly
+      time: !!str 08:00
+      timezone: Australia/Melbourne
+    groups:
+      deno-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      deno-dependencies-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
