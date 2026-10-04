@@ -4,13 +4,13 @@ import type { OptionValues } from "../components/OptionsForm.js";
 import { useEffect, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
-import { IconCheck, IconChevron, Spinner } from "../components/Icons.js";
+import { IconAlert, IconCheck, IconChevron, IconInfo, Spinner } from "../components/Icons.js";
 import { JobsTable } from "../components/JobsTable.js";
 import { OptionsForm } from "../components/OptionsForm.js";
-import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
+import { Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useJobs } from "../hooks.js";
-import { defaultsFrom, describeReason, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
+import { defaultsFrom, describeReason, jobReasons, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -132,7 +132,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
               </select>
             </Field>
             <div className="printer-state">
-              <Badge tone={stateTone(printer.summary.state)}>{printer.summary.state}</Badge>
+              <StateBadge state={printer.summary.state} />
               {printer.location && <span>{printer.location}</span>}
               {printer.summary.stateReasons.map(describeReason).map(r => (
                 <span key={r.text} className={r.severity === "error" ? "danger-text" : r.severity === "warning" ? "warning-text" : "muted"}>{r.text}</span>
@@ -212,13 +212,70 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
 
       <footer className="panel-footer">
         <span className="status">
-          {file
-            ? <span>{summary ? `Will print ${summary}.` : "Ready to print."}</span>
-            : "Add a document above to print."}
+          {!file
+            ? "Add a document above to print."
+            : blocked
+              ? "Fix the combination above to print."
+              : summary ? `Will print ${summary}.` : "Ready to print."}
         </span>
         <Button type="submit" variant="primary" size="lg" disabled={!file || blocked || !fields}>Print</Button>
       </footer>
     </form>
+  );
+}
+
+/** What became of the job, in the printer's terms but the user's words; a refusal never wears a tick. */
+function SentJob({ job, printerName, onTryAgain, onChangeSettings, onPrintAnother }: { job: JobDto; printerName: string; onTryAgain: () => Promise<void>; onChangeSettings: () => void; onPrintAnother: (keepSettings: boolean) => void }) {
+  const [retrying, setRetrying] = useState(false);
+  const { error, fail } = useAsyncError();
+  const tone = stateTone(job.state, job.stateReasons);
+  const why = [...jobReasons(job.stateReasons), job.stateMessage, job.error].filter(Boolean).join(" · ");
+  const failed = tone === "danger";
+  const outcome = failed
+    ? { icon: <IconAlert className="icon danger-text" />, title: "The printer couldn't print this", lede: `${job.filename} didn't print on ${printerName}.` }
+    : tone === "warning"
+      ? { icon: <IconAlert className="icon warning-text" />, title: "Waiting on the printer", lede: `${job.filename} is at ${printerName}, which has paused it.` }
+      : job.state === "canceled"
+        ? { icon: <IconInfo className="icon" />, title: "Cancelled", lede: `${job.filename} won't print on ${printerName}.` }
+        : { icon: <IconCheck className="icon success-text" />, title: job.state === "completed" ? "Printed" : "Sent to the printer", lede: `${job.filename} went to ${printerName}.` };
+
+  return (
+    <EmptyState
+      icon={outcome.icon}
+      title={outcome.title}
+      description={(
+        <>
+          {outcome.lede}
+          <span className="empty-meta">
+            <StateBadge state={job.state} reasons={job.stateReasons} />
+            {why && <span className={failed ? "danger-text" : tone === "warning" ? "warning-text" : "muted"}>{why}</span>}
+          </span>
+          {error && <span className="empty-meta danger-text">{error}</span>}
+        </>
+      )}
+      action={(
+        <div className="row">
+          {failed
+            ? (
+                <>
+                  <Button
+                    variant="primary"
+                    loading={retrying}
+                    onClick={() => {
+                      setRetrying(true);
+                      onTryAgain().catch(fail).finally(() => setRetrying(false));
+                    }}
+                  >
+                    Try again
+                  </Button>
+                  <Button onClick={onChangeSettings}>Change settings</Button>
+                </>
+              )
+            : <Button variant="primary" onClick={() => onPrintAnother(true)}>Print another with these settings</Button>}
+          <Button onClick={() => onPrintAnother(false)}>Start a new job</Button>
+        </div>
+      )}
+    />
   );
 }
 
@@ -227,6 +284,8 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>("form");
   const [submitted, setSubmitted] = useState<JobDto | null>(null);
+  // Kept after the form clears, so a job the printer refused can be sent again without choosing the file again.
+  const [sentFile, setSentFile] = useState<File | null>(null);
   const [formKey, setFormKey] = useState(0);
   const printer = printers.find(p => p.id === selectedId) ?? printers[0];
   const { jobs, error, refresh } = useJobs({ all: false, limit: 5, refreshKey: jobsKey });
@@ -241,6 +300,22 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
     setPhase("form");
     if (!keepSettings)
       setFormKey(k => k + 1);
+  }
+
+  /** The same document and settings again: from the copy the server kept, or back through the form with the file. */
+  async function tryAgain(job: JobDto) {
+    if (!job.fileRetained) {
+      changeSettings();
+      return;
+    }
+    setSubmitted(await api.reprintJob(job.id));
+    onSubmitted();
+    void refresh();
+  }
+
+  function changeSettings() {
+    setFile(sentFile);
+    printAnother(true);
   }
 
   if (loading)
@@ -280,6 +355,7 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
           onSubmitted={(job) => {
             setSubmitted(job);
             setPhase("sent");
+            setSentFile(file);
             setFile(null);
             onSubmitted();
             void refresh();
@@ -297,25 +373,7 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
         )}
         {phase === "sent" && live && (
           <div className="panel-body" role="status" aria-live="polite">
-            <EmptyState
-              icon={<IconCheck className="icon success-text" />}
-              title={live.state === "completed" ? "Printed" : "Job submitted"}
-              description={(
-                <>
-                  {`${live.filename} went to ${printer.name}.`}
-                  <span className="empty-meta">
-                    <StateBadge state={live.state} reasons={live.stateReasons} />
-                    {live.error && <span className="danger-text">{live.error}</span>}
-                  </span>
-                </>
-              )}
-              action={(
-                <div className="row">
-                  <Button variant="primary" onClick={() => printAnother(true)}>Print another with these settings</Button>
-                  <Button onClick={() => printAnother(false)}>Start a new job</Button>
-                </div>
-              )}
-            />
+            <SentJob key={live.id} job={live} printerName={printer.name} onTryAgain={() => tryAgain(live)} onChangeSettings={changeSettings} onPrintAnother={printAnother} />
           </div>
         )}
       </Panel>

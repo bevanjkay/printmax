@@ -7,8 +7,8 @@ import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconPrinter, IconRefresh, IconSearch, IconUpload } from "../components/Icons.js";
-import { Badge, Button, EmptyState, Field, Notice, Panel } from "../components/ui.js";
-import { describeReason, formatDate, stateTone, useAsyncError } from "../util.js";
+import { Badge, Button, EmptyState, Field, Notice, Panel, StateBadge } from "../components/ui.js";
+import { describeReason, formatDate, useAsyncError } from "../util.js";
 
 type Caps = Record<string, { type: string; values: unknown[] }>;
 
@@ -496,7 +496,7 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
       title={(
         <span className="row">
           {printer.name}
-          <Badge tone={stateTone(s.state)}>{s.state}</Badge>
+          <StateBadge state={s.state} />
         </span>
       )}
       actions={(

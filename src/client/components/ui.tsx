@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 /* ---------- Badge ---------- */
 
-import { stateTone } from "../util.js";
+import { stateLabel, stateTone } from "../util.js";
 import { IconAlert, IconCheck, IconFile, IconInfo, IconPrinter, IconUpload, Spinner } from "./Icons.js";
 
 /* ---------- Button ---------- */
@@ -26,12 +26,12 @@ export function Button({ variant = "secondary", size = "md", loading, icon, clas
   );
 }
 
-export function Badge({ tone = "neutral", plain, children }: { tone?: Tone; plain?: boolean; children: ReactNode }) {
-  return <span className={`badge badge-${tone}${plain ? " badge-plain" : ""}`}>{children}</span>;
+export function Badge({ tone = "neutral", plain, title, children }: { tone?: Tone; plain?: boolean; title?: string; children: ReactNode }) {
+  return <span className={`badge badge-${tone}${plain ? " badge-plain" : ""}`} title={title}>{children}</span>;
 }
 
 export function StateBadge({ state, reasons }: { state: string; reasons?: string[] }) {
-  return <Badge tone={stateTone(state, reasons)}>{state.replace(/-/g, " ")}</Badge>;
+  return <Badge tone={stateTone(state, reasons)} title={state}>{stateLabel(state, reasons)}</Badge>;
 }
 
 /* ---------- Number input ---------- */

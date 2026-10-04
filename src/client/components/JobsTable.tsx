@@ -3,7 +3,7 @@ import type { JobDto } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
 import { ACTIVE_JOB_STATES } from "../../shared/types.js";
 import { api } from "../api.js";
-import { formatDate, formatTime, useAsyncError } from "../util.js";
+import { formatDate, formatTime, jobReasons, useAsyncError } from "../util.js";
 import { IconInbox, IconLibrary, IconRefresh } from "./Icons.js";
 import { Button, EmptyState, Notice, NumberInput, SkeletonRows, StateBadge } from "./ui.js";
 
@@ -139,11 +139,11 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                     const isNew = !seenRef.current.has(job.id);
                     seenRef.current.add(job.id);
                     const detail = [
-                      job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null,
-                      ...job.stateReasons,
+                      ...jobReasons(job.stateReasons),
                       job.stateMessage,
-                      job.state === "retrying" && job.nextAttemptAt ? `retrying at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
+                      job.state === "retrying" && job.nextAttemptAt ? `Trying again at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
                     ].filter(Boolean).join(" · ");
+                    const keywords = [job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null, ...job.stateReasons].filter(Boolean).join(" · ");
                     return (
                       <tr key={job.id} className={isNew ? "new" : undefined}>
                         <td className="num id muted">{job.id}</td>
@@ -151,7 +151,7 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                         {showUser && <td className="user">{job.userName ?? "—"}</td>}
                         <td className="printer">{job.printerName ?? job.printerId}</td>
                         <td className="state"><StateBadge state={job.state} reasons={job.stateReasons} /></td>
-                        <td className="meta" title={detail || undefined}>
+                        <td className="meta" title={keywords || undefined}>
                           {detail || "—"}
                           {job.error && <div className="danger-text">{job.error}</div>}
                         </td>
