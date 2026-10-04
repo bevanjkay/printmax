@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ACTIVE_JOB_STATES } from "../../shared/types.js";
 import { api } from "../api.js";
 import { formatDate, formatTime, jobReasons, useAsyncError } from "../util.js";
+import { ConfirmButton } from "./ConfirmButton.js";
 import { IconInbox, IconLibrary, IconRefresh } from "./Icons.js";
 import { Button, EmptyState, Notice, NumberInput, SkeletonRows, StateBadge } from "./ui.js";
 
@@ -66,7 +67,7 @@ function Keep({ job, canShare, onDone, onError }: { job: JobDto; canShare: boole
           <option value="user">Only me</option>
         </select>
       )}
-      <Button type="submit" size="sm" variant="primary" loading={busy}>Keep</Button>
+      <Button type="submit" size="sm" variant="primary" loading={busy}>Save</Button>
       <Button size="sm" variant="ghost" onClick={() => onDone("")}>Cancel</Button>
     </form>
   );
@@ -209,11 +210,11 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                                     setKeeping(job.id);
                                   }}
                                 >
-                                  Keep
+                                  Save to Library
                                 </Button>
                               )}
                               {(ACTIVE_JOB_STATES as readonly string[]).includes(job.state) && (
-                                <button type="button" className="btn btn-sm btn-danger" onClick={() => cancel(job.id)}>Cancel</button>
+                                <ConfirmButton size="sm" label="Cancel job" confirmLabel="Stop this job?" onConfirm={() => void cancel(job.id)} />
                               )}
                             </>
                           )}

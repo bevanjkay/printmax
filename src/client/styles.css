@@ -353,6 +353,7 @@ details.disclosure > .disclosure-body { padding: 10px 0 0; }
 .auth .brand { justify-content: center; margin-bottom: 16px; }
 .auth h1 { font-size: var(--fs-lg); text-align: center; margin-bottom: 4px; }
 .auth .lede { text-align: center; color: var(--text-2); font-size: var(--fs-sm); margin-bottom: 20px; }
+.auth .forgot { margin-top: 14px; text-align: center; color: var(--text-2); font-size: var(--fs-xs); }
 .printer-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-sm); color: var(--text-2); min-height: 22px; }
 
 /* ---------- motion ---------- */

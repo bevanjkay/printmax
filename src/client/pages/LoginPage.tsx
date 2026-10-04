@@ -65,6 +65,7 @@ export function LoginPage({ needsSetup, setupTokenRequired, onSignedIn }: Props)
           <Button type="submit" variant="primary" size="lg" loading={busy} style={{ width: "100%", marginTop: 6 }}>
             {needsSetup ? "Create account" : "Sign in"}
           </Button>
+          {!needsSetup && <p className="forgot">Forgotten your password? An administrator can reset it.</p>}
         </div>
       </form>
     </div>
