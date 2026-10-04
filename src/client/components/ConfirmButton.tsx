@@ -47,7 +47,10 @@ export function ConfirmButton({ label, confirmLabel = "Confirm?", size = "md", d
           }
         }}
       >
-        {armed ? confirmLabel : label}
+        <span className="swap">
+          <span className={armed ? "off" : undefined}>{label}</span>
+          <span className={armed ? undefined : "off"}>{confirmLabel}</span>
+        </span>
       </Button>
       <span className="sr-only" aria-live="polite">{armed ? `${confirmLabel} Press again to confirm.` : ""}</span>
     </>

@@ -252,8 +252,7 @@ export function PresetsPage({ user, printers }: Props) {
     <div className="stack">
       <div className="toolbar">
         <select
-          className="control"
-          style={{ width: "auto", minWidth: 220 }}
+          className="control inline printer-pick"
           aria-label="Printer"
           value={printer.id}
           onChange={(e) => {
@@ -367,7 +366,7 @@ export function PresetsPage({ user, printers }: Props) {
                           {p.editable && (
                             <>
                               <Button size="sm" onClick={() => setEditing(p)}>Edit</Button>
-                              <ConfirmButton size="sm" label="Delete" confirmLabel="Delete preset?" onConfirm={() => void remove(p)} />
+                              <ConfirmButton size="sm" label="Delete" confirmLabel="Delete it?" onConfirm={() => void remove(p)} />
                             </>
                           )}
                         </td>

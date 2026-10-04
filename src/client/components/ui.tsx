@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 /* ---------- Badge ---------- */
 
-import { stateLabel, stateTone } from "../util.js";
+import { formatBytes, stateLabel, stateTone } from "../util.js";
 import { IconAlert, IconCheck, IconFile, IconInfo, IconPrinter, IconUpload, Spinner } from "./Icons.js";
 
 /* ---------- Button ---------- */
@@ -151,14 +151,6 @@ export function SkeletonRows({ rows = 3 }: { rows?: number }) {
 }
 
 /* ---------- Dropzone ---------- */
-
-function formatBytes(n: number): string {
-  if (n < 1024)
-    return `${n} B`;
-  if (n < 1024 * 1024)
-    return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 interface DropzoneProps {
   file: File | null;

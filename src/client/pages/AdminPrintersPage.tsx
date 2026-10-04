@@ -99,7 +99,7 @@ function Discovery({ onPick }: { onPick: (p: DiscoveredPrinter) => void }) {
       <div className="panel-body">
         <p className="help">Looks for printers announcing themselves with Bonjour on this network. Inside Docker this needs host networking; adding by address always works.</p>
         {error && <Notice tone="error">{error}</Notice>}
-        {found && found.length === 0 && <p className="help" style={{ marginTop: 10 }}>Nothing answered. The printer may be on another network, or not advertise itself.</p>}
+        {found && found.length === 0 && <p className="help discovery-empty">Nothing answered. The printer may be on another network, or not advertise itself.</p>}
       </div>
       {found && found.length > 0 && (
         <table className="table">
@@ -153,26 +153,11 @@ function Changes({ printer, onChanged }: { printer: PrinterDto; onChanged: () =>
       Presets that rely on removed values are flagged on the Presets page.
       {error && <div className="danger-text">{error}</div>}
       {changes.map(c => (
-        <div key={c.id} style={{ marginTop: 8 }}>
+        <div key={c.id} className="caps-change">
           <div className="xs muted">{formatDate(c.fetchedAt)}</div>
-          {c.added.length > 0 && (
-            <div>
-              Added:
-              {c.added.join(", ")}
-            </div>
-          )}
-          {c.removed.length > 0 && (
-            <div>
-              Removed:
-              {c.removed.join(", ")}
-            </div>
-          )}
-          {c.changed.length > 0 && (
-            <div>
-              Changed:
-              {c.changed.join(", ")}
-            </div>
-          )}
+          {c.added.length > 0 && <div>{`Added: ${c.added.join(", ")}`}</div>}
+          {c.removed.length > 0 && <div>{`Removed: ${c.removed.join(", ")}`}</div>}
+          {c.changed.length > 0 && <div>{`Changed: ${c.changed.join(", ")}`}</div>}
           <Button size="sm" onClick={() => ack(c.id)}>Dismiss</Button>
         </div>
       ))}
@@ -266,15 +251,15 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
               {" "}
               <span className="muted">{a.values.map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ")}</span>
             </span>
-            <Button size="sm" variant="danger" onClick={() => removeOverride(name)}>Reset to reported</Button>
+            <Button size="sm" onClick={() => removeOverride(name)}>Reset to reported</Button>
           </div>
         ))}
         <form className="row" onSubmit={addValue}>
-          <select className="control" style={{ width: "auto", minWidth: 200 }} aria-label="Attribute" value={attr} onChange={e => setAttr(e.target.value)}>
+          <select className="control inline wide" aria-label="Attribute" value={attr} onChange={e => setAttr(e.target.value)}>
             <option value="">Choose an attribute</option>
             {listAttrs.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
-          <input className="control" style={{ width: "auto", minWidth: 180 }} aria-label="Value to add" list="override-values" value={value} onChange={e => setValue(e.target.value)} placeholder={suggestions[0] ?? "value"} />
+          <input className="control inline wide" aria-label="Value to add" list="override-values" value={value} onChange={e => setValue(e.target.value)} placeholder={suggestions[0] ?? "value"} />
           <datalist id="override-values">
             {suggestions.map(v => <option key={v} value={v} />)}
           </datalist>
@@ -360,7 +345,7 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
               }}
             />
             <Button size="sm" icon={<IconUpload />} loading={busy} onClick={() => fileRef.current?.click()}>{printer.ppd ? "Replace PPD" : "Upload PPD"}</Button>
-            {printer.ppd && <ConfirmButton size="sm" label="Remove PPD" confirmLabel="Remove PPD and return to IPP?" disabled={busy} onConfirm={() => void run(() => api.clearPpd(printer.id))} />}
+            {printer.ppd && <ConfirmButton size="sm" label="Remove PPD" confirmLabel="Back to IPP?" disabled={busy} onConfirm={() => void run(() => api.clearPpd(printer.id))} />}
           </span>
         </div>
         <div className="row between small">

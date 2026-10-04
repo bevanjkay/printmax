@@ -30,7 +30,7 @@ function Reprint({ job, onDone, onError }: { job: JobDto; onDone: () => void; on
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={setCopies} />
+      <NumberInput className="control copies" min={1} max={999} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
     </form>
@@ -60,7 +60,7 @@ function Keep({ job, canShare, onDone, onError }: { job: JobDto; canShare: boole
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <input className="control" required style={{ width: 150 }} aria-label="Library name" autoFocus value={name} onChange={e => setName(e.target.value)} />
+      <input className="control library-name" required aria-label="Library name" autoFocus value={name} onChange={e => setName(e.target.value)} />
       {canShare && (
         <select className="control" aria-label="Who can use it" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
           <option value="global">Everyone</option>
@@ -214,7 +214,7 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                                 </Button>
                               )}
                               {(ACTIVE_JOB_STATES as readonly string[]).includes(job.state) && (
-                                <ConfirmButton size="sm" label="Cancel job" confirmLabel="Stop this job?" onConfirm={() => void cancel(job.id)} />
+                                <ConfirmButton size="sm" label="Cancel job" confirmLabel="Stop it?" onConfirm={() => void cancel(job.id)} />
                               )}
                             </>
                           )}

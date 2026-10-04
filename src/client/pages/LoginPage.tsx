@@ -62,7 +62,7 @@ export function LoginPage({ needsSetup, setupTokenRequired, onSignedIn }: Props)
             </Field>
           )}
           {error && <Notice tone="error">{error}</Notice>}
-          <Button type="submit" variant="primary" size="lg" loading={busy} style={{ width: "100%", marginTop: 6 }}>
+          <Button type="submit" variant="primary" size="lg" loading={busy} className="btn-block">
             {needsSetup ? "Create account" : "Sign in"}
           </Button>
           {!needsSetup && <p className="forgot">Forgotten your password? An administrator can reset it.</p>}

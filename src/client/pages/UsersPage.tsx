@@ -115,7 +115,7 @@ export function UsersPage({ me }: { me: UserDto }) {
                           {u.id === me.id
                             ? <Badge tone="info" plain>Admin</Badge>
                             : (
-                                <select className="control" style={{ width: "auto" }} aria-label={`Role of ${u.name}`} value={u.role} onChange={e => void changeRole(u, e.target.value as "admin" | "user")}>
+                                <select className="control inline" aria-label={`Role of ${u.name}`} value={u.role} onChange={e => void changeRole(u, e.target.value as "admin" | "user")}>
                                   <option value="user">User</option>
                                   <option value="admin">Admin</option>
                                 </select>

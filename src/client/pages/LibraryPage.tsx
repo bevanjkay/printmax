@@ -9,20 +9,12 @@ import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../c
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, NumberInput, Panel, SkeletonRows } from "../components/ui.js";
 import { useChosenPrinter } from "../hooks.js";
 import { sectionOpen, withSection } from "../sections.js";
-import { formatDate, summariseOptions, useAsyncError } from "../util.js";
+import { formatBytes, formatDate, summariseOptions, useAsyncError } from "../util.js";
 
 interface Props {
   user: UserDto;
   printers: PrinterDto[];
   onPrinted: () => void;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024)
-    return `${n} B`;
-  if (n < 1024 * 1024)
-    return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function documentCount(n: number): string {
@@ -312,7 +304,7 @@ function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
+      <NumberInput className="control copies" min={1} max={999} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
@@ -437,8 +429,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
     <div className="stack">
       <div className="toolbar">
         <select
-          className="control"
-          style={{ width: "auto", minWidth: 220 }}
+          className="control inline printer-pick"
           aria-label="Printer"
           value={printer.id}
           onChange={(e) => {
@@ -628,7 +619,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                             >
                                               Replace file
                                             </Button>
-                                            <ConfirmButton size="sm" label="Delete" confirmLabel="Delete from library?" onConfirm={() => void remove(entry)} />
+                                            <ConfirmButton size="sm" label="Delete" confirmLabel="Delete it?" onConfirm={() => void remove(entry)} />
                                           </>
                                         )}
                                       </>

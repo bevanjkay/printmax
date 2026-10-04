@@ -134,11 +134,20 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
       <div className="panel-body">
         <div className="two-col">
           <div>
-            <Field label="Printer" className="compact">
-              <select className="control" value={printer.id} onChange={e => onPrinterChange(Number(e.target.value))}>
-                {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
+            {printers.length > 1
+              ? (
+                  <Field label="Printer" className="compact">
+                    <select className="control" value={printer.id} onChange={e => onPrinterChange(Number(e.target.value))}>
+                      {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </Field>
+                )
+              : (
+                  <div className="field compact">
+                    <span className="field-label">Printer</span>
+                    <span className="static-value">{printer.name}</span>
+                  </div>
+                )}
             <div className="printer-state">
               <StateBadge state={printer.summary.state} />
               {printer.location && <span>{printer.location}</span>}

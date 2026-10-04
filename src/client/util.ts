@@ -34,6 +34,14 @@ export function pdfPageSize(bytes: Uint8Array): DocumentSize | null {
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
+export function formatBytes(n: number): string {
+  if (n < 1024)
+    return `${n} B`;
+  if (n < 1024 * 1024)
+    return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function formatDate(iso: string): string {
   return DATE_FORMAT.format(new Date(iso));
 }
