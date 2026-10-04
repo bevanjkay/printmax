@@ -496,7 +496,7 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
             load={() => api.printerRemoval(printer.id)}
             describe={({ presets, libraryDocuments, jobs }) => {
               const goes = countList([[presets, "preset"], [libraryDocuments, "library document"], [jobs, "job"]]);
-              return `${goes ? `This also deletes its ${goes}${jobs > 0 ? ", job history included" : ""}.` : "Nothing else is attached to it."} This can't be undone.`;
+              return `${goes ? `This also deletes its ${goes}.` : "Nothing else is attached to it."} This can't be undone.`;
             }}
             onConfirm={() => api.deletePrinter(printer.id).then(onChanged)}
           />

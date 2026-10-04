@@ -153,7 +153,7 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                         <td className="printer">{job.printerName ?? job.printerId}</td>
                         <td className="state"><StateBadge state={job.state} reasons={job.stateReasons} /></td>
                         <td className="meta" title={keywords || undefined}>
-                          {detail || "—"}
+                          {detail || (job.error ? null : "—")}
                           {job.error && <div className="danger-text">{job.error}</div>}
                         </td>
                         <td className="meta num created">{formatDate(job.createdAt)}</td>
