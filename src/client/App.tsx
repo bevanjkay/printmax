@@ -35,32 +35,37 @@ const PAGES: PageDef[] = [
   { id: "account", label: "Account", title: "Account", description: "Your sign-in details.", icon: <IconUser /> },
 ];
 
+/** Pages live in the URL hash, so Back, refresh and a bookmark keep the page; the server only ever serves `/`. */
+function pageFromHash(): Page {
+  const id = window.location.hash.replace(/^#\/?/, "");
+  return PAGES.find(p => p.id === id)?.id ?? "print";
+}
+
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join("");
 }
 
-function Nav({ pages, page, pending, onSelect }: { pages: PageDef[]; page: Page; pending: number; onSelect: (p: Page) => void }) {
+function Nav({ pages, page, pending }: { pages: PageDef[]; page: Page; pending: number }) {
   return (
     <nav className="nav" aria-label="Main">
       {pages.map(p => (
-        <button
+        <a
           key={p.id}
-          type="button"
+          href={`#/${p.id}`}
           className={`nav-item${page === p.id ? " active" : ""}`}
           aria-current={page === p.id ? "page" : undefined}
-          onClick={() => onSelect(p.id)}
         >
           {p.icon}
           {p.label}
           {p.id === "printers" && pending > 0 && <span className="count" aria-label={`${pending} capability changes to review`}>{pending}</span>}
-        </button>
+        </a>
       ))}
     </nav>
   );
 }
 
 function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }) {
-  const [page, setPage] = useState<Page>("print");
+  const [page, setPage] = useState<Page>(pageFromHash);
   const [printers, setPrinters] = useState<PrinterDto[] | null>(null);
   const [jobsKey, setJobsKey] = useState(0);
   const { error, fail, clear } = useAsyncError();
@@ -76,6 +81,12 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
       fail(err);
     }
   }, [fail, clear]);
+
+  useEffect(() => {
+    const follow = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, []);
 
   useEffect(() => {
     void refreshPrinters();
@@ -108,7 +119,7 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
           <BrandMark />
           printmax
         </div>
-        <Nav pages={pages} page={page} pending={pending} onSelect={setPage} />
+        <Nav pages={pages} page={current.id} pending={pending} />
         <div className="sidebar-footer">
           <span className="avatar" aria-hidden="true">{initials(user.name)}</span>
           <div className="who">
@@ -133,7 +144,7 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
               Sign out
             </button>
           </div>
-          <Nav pages={pages} page={page} pending={pending} onSelect={setPage} />
+          <Nav pages={pages} page={current.id} pending={pending} />
         </header>
 
         <main className="page">
@@ -144,22 +155,24 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
             </div>
           </div>
           {error && <Notice tone="error">{error}</Notice>}
-          {page === "print" && (
+          {current.id === "print" && (
             <PrintPage
               printers={list}
               loading={printers === null}
               jobsKey={jobsKey}
               isAdmin={user.role === "admin"}
               onSubmitted={() => setJobsKey(k => k + 1)}
-              onGoToJobs={() => setPage("jobs")}
+              onGoToJobs={() => {
+                window.location.hash = "/jobs";
+              }}
             />
           )}
-          {page === "jobs" && <JobsPage user={user} refreshKey={jobsKey} />}
-          {page === "presets" && <PresetsPage user={user} printers={list} />}
-          {page === "library" && <LibraryPage user={user} printers={list} onPrinted={() => setJobsKey(k => k + 1)} />}
-          {page === "printers" && user.role === "admin" && <AdminPrintersPage printers={list} onChanged={refreshPrinters} />}
-          {page === "users" && user.role === "admin" && <UsersPage me={user} />}
-          {page === "account" && <AccountPage user={user} />}
+          {current.id === "jobs" && <JobsPage user={user} refreshKey={jobsKey} />}
+          {current.id === "presets" && <PresetsPage user={user} printers={list} />}
+          {current.id === "library" && <LibraryPage user={user} printers={list} onPrinted={() => setJobsKey(k => k + 1)} />}
+          {current.id === "printers" && user.role === "admin" && <AdminPrintersPage printers={list} onChanged={refreshPrinters} />}
+          {current.id === "users" && user.role === "admin" && <UsersPage me={user} />}
+          {current.id === "account" && <AccountPage user={user} />}
         </main>
       </div>
     </div>
