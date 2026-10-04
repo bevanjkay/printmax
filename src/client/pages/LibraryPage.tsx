@@ -517,7 +517,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                 <EmptyState
                   icon={<IconLibrary />}
                   title={`Nothing in the library for ${printer.name}`}
-                  description="Keep the documents you print regularly here with the preset they use. Add one now, or use Keep on any job in the Jobs list."
+                  description="Keep the documents you print regularly here with the preset they use. Add one now, or use Save to Library on any job in the Jobs list."
                   action={<Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")}>Add the first document</Button>}
                 />
               )
@@ -531,12 +531,12 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                   />
                 )
               : (
-                  <table className="table">
+                  <table className="table library">
                     <thead>
                       <tr>
                         <th>Document</th>
                         <th>Prints as</th>
-                        <th>Visibility</th>
+                        <th>Who can use it</th>
                         <th>Last printed</th>
                         <th>Status</th>
                         <th className="actions"><span className="sr-only">Actions</span></th>
@@ -566,20 +566,20 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                           )}
                           {(groups.length === 0 || isOpen(section)) && section.items.map(entry => (
                             <tr key={entry.id}>
-                              <td>
+                              <td className="document">
                                 <div className="primary">{entry.name}</div>
                                 <div className="meta">{`${entry.filename} · ${formatBytes(entry.byteSize)}`}</div>
                               </td>
-                              <td>
+                              <td className="prints-as">
                                 <div>{entry.presetName ?? (entry.presetId === null && Object.keys(entry.effectiveOptions).length === 0 ? "Printer defaults" : "Saved settings")}</div>
                                 <div className="meta">{summariseOptions(fields, entry.effectiveOptions, primaryNames, { changesOnly: true })}</div>
                               </td>
-                              <td><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
-                              <td className="meta num">
+                              <td className="scope"><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
+                              <td className="meta num last-printed">
                                 {entry.lastPrintedAt ? formatDate(entry.lastPrintedAt) : "Never"}
                                 {entry.printCount > 0 && <div className="meta">{`${entry.printCount} ${entry.printCount === 1 ? "time" : "times"}`}</div>}
                               </td>
-                              <td>
+                              <td className="status">
                                 {entry.problems.length > 0 ? <Badge tone="danger">Needs attention</Badge> : <Badge tone="success">Ready</Badge>}
                                 {entry.problems.length > 0 && <div className="meta danger-text">{entry.problems.join("; ")}</div>}
                               </td>

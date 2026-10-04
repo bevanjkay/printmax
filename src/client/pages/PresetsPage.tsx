@@ -332,7 +332,7 @@ export function PresetsPage({ user, printers }: Props) {
                   <thead>
                     <tr>
                       <th>Preset</th>
-                      <th>Visibility</th>
+                      <th>Who can use it</th>
                       <th>Settings</th>
                       <th>Status</th>
                       <th className="actions"><span className="sr-only">Actions</span></th>

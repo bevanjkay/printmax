@@ -447,6 +447,25 @@ details.disclosure + details.disclosure { margin-top: 4px; }
   .table.jobs td.actions { grid-column: 2; grid-row: 3 / 5; align-self: center; }
   .table.jobs td.actions .btn { margin: 0; }
   .table.jobs tbody tr:hover td { background: none; }
+
+  /* Library: the document and whether it can print lead; actions sit on their own line, in thumb reach. */
+  .table.library, .table.library tbody { display: block; }
+  .table.library thead { display: none; }
+  .table.library tr:not(.group-row) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .table.library tr.group-row { display: block; }
+  .table.library tr.group-row th { display: block; }
+  .table.library td { display: block; padding: 0; border: 0; white-space: normal; max-width: none; }
+  .table.library td.document { grid-column: 1; grid-row: 1; overflow-wrap: anywhere; }
+  .table.library td.status { grid-column: 2; grid-row: 1; text-align: right; }
+  .table.library td.prints-as { grid-column: 1 / -1; grid-row: 2; font-size: var(--fs-xs); }
+  .table.library td.scope { grid-column: 1; grid-row: 3; }
+  .table.library td.last-printed { grid-column: 2; grid-row: 3; text-align: right; }
+  .table.library td.last-printed > div { display: inline; margin-left: 4px; }
+  .table.library td.actions { grid-column: 1 / -1; grid-row: 4; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; text-align: left; }
+  .table.library td.actions .btn { margin: 0; }
+  .table.library td.actions .inline-form { max-width: none; justify-content: flex-start; }
+  .table.library td[colspan] { padding: 10px 16px; }
+  .table.library tbody tr:hover td { background: none; }
 }
 .table td.email { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table.jobs td.created { white-space: nowrap; }
