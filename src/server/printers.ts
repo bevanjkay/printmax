@@ -1,4 +1,4 @@
-import type { PrinterDto, PrinterSummary, PrintMode } from "../shared/types.js";
+import type { PrinterDto, PrinterSummary, PrintMode, RemovalImpact } from "../shared/types.js";
 import type { Db } from "./db.js";
 import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
@@ -279,6 +279,12 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
     throw new HttpError(422, problems.join("; "));
   db.prepare("UPDATE printers SET caps_overrides = ?, option_defaults = ? WHERE id = ?").run(JSON.stringify(overrides), JSON.stringify(own), id);
   return requirePrinter(db, id);
+}
+
+export function printerRemovalImpact(db: Db, id: number): RemovalImpact {
+  requirePrinter(db, id);
+  const count = (table: string) => Number((db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE printer_id = ?`).get(id) as { n: number }).n);
+  return { presets: count("presets"), libraryDocuments: count("stored_jobs"), jobs: count("jobs") };
 }
 
 export function deletePrinter(db: Db, id: number): void {

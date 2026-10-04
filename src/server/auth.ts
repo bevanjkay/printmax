@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { UserDto } from "../shared/types.js";
+import type { RemovalImpact, UserDto } from "../shared/types.js";
 import type { Db } from "./db.js";
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
@@ -90,6 +90,17 @@ export function setRole(db: Db, userId: number, role: unknown): UserRow {
     throw notFound("user");
   db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, userId);
   return getUser(db, userId)!;
+}
+
+export function userRemovalImpact(db: Db, id: number): RemovalImpact {
+  if (!getUser(db, id))
+    throw notFound("user");
+  const count = (sql: string) => Number((db.prepare(sql).get(id) as { n: number }).n);
+  return {
+    presets: count("SELECT COUNT(*) AS n FROM presets WHERE owner_id = ?"),
+    libraryDocuments: count("SELECT COUNT(*) AS n FROM stored_jobs WHERE owner_id = ?"),
+    jobs: count("SELECT COUNT(*) AS n FROM jobs WHERE user_id = ?"),
+  };
 }
 
 export function deleteUser(db: Db, id: number): void {

@@ -500,6 +500,29 @@ describe("aPI", () => {
       expect((await app.inject(as(userCookie, { method: "GET", url: "/api/users" }))).statusCode).toBe(403);
     });
   });
+
+  describe("removal", () => {
+    it("says what removing a printer or a user takes with it, before anything goes", async () => {
+      const stamp = new Date().toISOString();
+      const spare = Number(db.prepare("INSERT INTO printers (name, uri, caps_discovered, created_at) VALUES ('Spare', 'ipp://127.0.0.1:2/ipp/print', '{}', ?)").run(stamp).lastInsertRowid);
+      const sam = (await app.inject(as(adminCookie, { method: "POST", url: "/api/users", payload: { name: "Sam", email: "sam@example.org", password: "samsamsam", role: "user" } }))).json<UserDto>();
+      db.prepare("INSERT INTO presets (printer_id, name, scope, owner_id, created_at, updated_at) VALUES (?, 'Mine', 'user', ?, ?, ?)").run(spare, sam.id, stamp, stamp);
+      db.prepare("INSERT INTO presets (printer_id, name, scope, created_at, updated_at) VALUES (?, 'Shared', 'global', ?, ?)").run(spare, stamp, stamp);
+      db.prepare("INSERT INTO stored_jobs (printer_id, name, scope, owner_id, filename, file_path, byte_size, document_format, created_at, updated_at) VALUES (?, 'Notes', 'user', ?, 'n.pdf', '/nowhere', 1, 'application/pdf', ?, ?)").run(spare, sam.id, stamp, stamp);
+      for (let i = 0; i < 3; i++)
+        db.prepare("INSERT INTO jobs (user_id, printer_id, filename, byte_size, document_format, state, created_at) VALUES (?, ?, 'j.pdf', 1, 'application/pdf', 'completed', ?)").run(sam.id, spare, stamp);
+
+      const printer = await app.inject(as(adminCookie, { method: "GET", url: `/api/printers/${spare}/removal` }));
+      expect(printer.json()).toEqual({ presets: 2, libraryDocuments: 1, jobs: 3 });
+      const user = await app.inject(as(adminCookie, { method: "GET", url: `/api/users/${sam.id}/removal` }));
+      expect(user.json()).toEqual({ presets: 1, libraryDocuments: 1, jobs: 3 });
+      expect((await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${spare}/removal` }))).statusCode).toBe(403);
+      expect((await app.inject(as(adminCookie, { method: "GET", url: "/api/users/9999/removal" }))).statusCode).toBe(404);
+
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${spare}` }))).statusCode).toBe(204);
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/users/${sam.id}` }))).statusCode).toBe(204);
+    });
+  });
 });
 
 describe("hardening", () => {

@@ -6,7 +6,7 @@ import { discoverPrinters } from "../discovery.js";
 import { HttpError, notFound } from "../errors.js";
 import { formFor } from "../form.js";
 import { applyResolvers } from "../ipp/constraints.js";
-import { addPrinter, capsFor, clearPpd, deletePrinter, discoveredCaps, listPrinters, overrideCaps, profileFor, refreshPrinter, requirePrinter, setDefaults, setOverrides, setPpd, setPrintMode, toDto } from "../printers.js";
+import { addPrinter, capsFor, clearPpd, deletePrinter, discoveredCaps, listPrinters, overrideCaps, printerRemovalImpact, profileFor, refreshPrinter, requirePrinter, setDefaults, setOverrides, setPpd, setPrintMode, toDto } from "../printers.js";
 import { probeOptions } from "../probe.js";
 import { jobWarnings, validateJobOptions } from "../validation.js";
 import { idParam } from "./params.js";
@@ -133,6 +133,8 @@ export function adminPrinterRoutes(app: FastifyInstance, db: Db, opts: { discove
     const body = (req.body ?? {}) as { mode?: unknown };
     return toDto(db, setPrintMode(db, idParam(req.params), body.mode));
   });
+
+  app.get("/api/printers/:id/removal", async req => printerRemovalImpact(db, idParam(req.params)));
 
   app.delete("/api/printers/:id", async (req, reply) => {
     deletePrinter(db, idParam(req.params));
