@@ -366,8 +366,8 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
         <div className="row between small">
           <span>Send jobs as</span>
           <div className="segmented" role="group" aria-label="Print mode">
-            <button type="button" className={postscript ? "" : "active"} disabled={busy} onClick={() => void run(() => api.setPrintMode(printer.id, "ipp"))}>IPP attributes</button>
-            <button type="button" className={postscript ? "active" : ""} disabled={busy || !printer.ppd} title={printer.ppd ? undefined : "Upload a PPD first"} onClick={() => void run(() => api.setPrintMode(printer.id, "postscript"))}>PostScript via PPD</button>
+            <button type="button" className={postscript ? "" : "active"} aria-pressed={!postscript} disabled={busy} onClick={() => void run(() => api.setPrintMode(printer.id, "ipp"))}>IPP attributes</button>
+            <button type="button" className={postscript ? "active" : ""} aria-pressed={postscript} disabled={busy || !printer.ppd} title={printer.ppd ? undefined : "Upload a PPD first"} onClick={() => void run(() => api.setPrintMode(printer.id, "postscript"))}>PostScript via PPD</button>
           </div>
         </div>
         {postscript && <p className="xs muted">Presets made in IPP mode are flagged until they are re-saved with PPD options. Copies still travels as an IPP attribute.</p>}

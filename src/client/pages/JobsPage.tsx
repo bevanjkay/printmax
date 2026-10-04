@@ -17,8 +17,8 @@ export function JobsPage({ user, refreshKey }: Props) {
       <div className="toolbar">
         {user.role === "admin" && (
           <div className="segmented" role="group" aria-label="Whose jobs">
-            <button type="button" className={all ? "" : "active"} onClick={() => setAll(false)}>Mine</button>
-            <button type="button" className={all ? "active" : ""} onClick={() => setAll(true)}>Everyone</button>
+            <button type="button" className={all ? "" : "active"} aria-pressed={!all} onClick={() => setAll(false)}>Mine</button>
+            <button type="button" className={all ? "active" : ""} aria-pressed={all} onClick={() => setAll(true)}>Everyone</button>
           </div>
         )}
         <span className="help">Updates every few seconds.</span>

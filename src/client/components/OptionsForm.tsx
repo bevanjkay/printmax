@@ -1,5 +1,5 @@
 import type { FormChoice, FormField } from "../../shared/types.js";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { IconChevron, IconPlus } from "./Icons.js";
 import { Field, NumberInput } from "./ui.js";
 
@@ -14,9 +14,9 @@ interface Props {
   friendly?: boolean;
 }
 
-function Segmented({ choices, value, disabled, onChange }: { choices: FormChoice[]; value: string; disabled?: boolean; onChange: (v: string) => void }) {
+function Segmented({ choices, value, labelledBy, disabled, onChange }: { choices: FormChoice[]; value: string; labelledBy: string; disabled?: boolean; onChange: (v: string) => void }) {
   return (
-    <div className="segmented full" role="group">
+    <div className="segmented full" role="group" aria-labelledby={labelledBy}>
       {choices.map(c => (
         <button key={String(c.value)} type="button" className={String(c.value) === value ? "active" : ""} disabled={disabled} aria-pressed={String(c.value) === value} onClick={() => onChange(String(c.value))}>
           {c.label}
@@ -26,10 +26,10 @@ function Segmented({ choices, value, disabled, onChange }: { choices: FormChoice
   );
 }
 
-function Stepper({ value, min, max, disabled, onChange }: { value: number; min: number; max: number; disabled?: boolean; onChange: (v: number) => void }) {
+function Stepper({ value, min, max, labelledBy, disabled, onChange }: { value: number; min: number; max: number; labelledBy: string; disabled?: boolean; onChange: (v: number) => void }) {
   const clamp = (n: number) => Math.min(max, Math.max(min, Number.isFinite(n) ? n : min));
   return (
-    <div className="stepper">
+    <div className="stepper" role="group" aria-labelledby={labelledBy}>
       <button type="button" disabled={disabled || value <= min} aria-label="Fewer copies" onClick={() => onChange(clamp(value - 1))}>−</button>
       <NumberInput min={min} max={max} disabled={disabled} value={value} onChange={onChange} aria-label="Copies" />
       <button type="button" disabled={disabled || value >= max} aria-label="More copies" onClick={() => onChange(clamp(value + 1))}><IconPlus /></button>
@@ -57,6 +57,9 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
   // Sections start collapsed; the header's "N set" count says what is inside. Once the reader
   // opens or closes one, that choice sticks for the life of the form.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // Groups of buttons or checkboxes take their name from the visible label, which a <label> can't give them.
+  const formId = useId();
+  const labelId = (f: FormField) => `${formId}-${f.name}`;
 
   const set = (name: string, v: unknown) => {
     const next = { ...value };
@@ -76,8 +79,8 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
         if (friendly && f.choices && f.choices.length >= 2 && f.choices.length <= 3) {
           return (
             <div key={f.name} className="field">
-              <span className="field-label">{f.label}</span>
-              <Segmented choices={f.choices} value={String(current ?? f.default ?? "")} disabled={disabled} onChange={v => set(f.name, v)} />
+              <span className="field-label" id={labelId(f)}>{f.label}</span>
+              <Segmented choices={f.choices} value={String(current ?? f.default ?? "")} labelledBy={labelId(f)} disabled={disabled} onChange={v => set(f.name, v)} />
             </div>
           );
         }
@@ -93,8 +96,8 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
         const selected = Array.isArray(current) ? current.map(String) : current === undefined ? [] : [String(current)];
         return (
           <div key={f.name} className="field">
-            <span className="field-label">{f.label}</span>
-            <div className="check-group">
+            <span className="field-label" id={labelId(f)}>{f.label}</span>
+            <div className="check-group" role="group" aria-labelledby={labelId(f)}>
               {f.choices?.map(c => (
                 <label key={String(c.value)} className="check">
                   <input
@@ -118,8 +121,8 @@ export function OptionsForm({ fields, value, onChange, disabled, friendly }: Pro
         if (friendly && f.name === "copies") {
           return (
             <div key={f.name} className="field">
-              <span className="field-label">{f.label}</span>
-              <Stepper value={Number(current ?? f.default ?? 1)} min={f.min ?? 1} max={f.max ?? 999} disabled={disabled} onChange={v => set(f.name, v)} />
+              <span className="field-label" id={labelId(f)}>{f.label}</span>
+              <Stepper value={Number(current ?? f.default ?? 1)} min={f.min ?? 1} max={f.max ?? 999} labelledBy={labelId(f)} disabled={disabled} onChange={v => set(f.name, v)} />
             </div>
           );
         }

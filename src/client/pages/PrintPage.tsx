@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import type { DocumentSize, FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { IconAlert, IconCheck, IconChevron, IconInfo, Spinner } from "../components/Icons.js";
@@ -293,6 +293,12 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
   const live = submitted === null ? null : jobs?.find(j => j.id === submitted.id) ?? submitted;
   // Closing the tab mid-upload loses the job with no trace of it on either side.
   useWarnBeforeLeaving(phase === "sending");
+  // The form, and the Print button with it, unmounts once the job goes out; focus follows the job instead of falling to the page.
+  const statusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (phase !== "form")
+      statusRef.current?.focus();
+  }, [phase]);
 
   /** Back to the form, with the settings as they were or as the printer's presets have them. */
   function printAnother(keepSettings: boolean) {
@@ -363,7 +369,7 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
           onFailed={() => setPhase("form")}
         />
         {phase === "sending" && (
-          <div className="panel-body" role="status" aria-live="polite">
+          <div className="panel-body" role="status" aria-live="polite" ref={statusRef} tabIndex={-1}>
             <EmptyState
               icon={<Spinner />}
               title={file ? `Sending ${file.name}` : "Sending the document"}
@@ -372,7 +378,7 @@ export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, on
           </div>
         )}
         {phase === "sent" && live && (
-          <div className="panel-body" role="status" aria-live="polite">
+          <div className="panel-body" role="status" aria-live="polite" ref={statusRef} tabIndex={-1}>
             <SentJob key={live.id} job={live} printerName={printer.name} onTryAgain={() => tryAgain(live)} onChangeSettings={changeSettings} onPrintAnother={printAnother} />
           </div>
         )}

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AuthState, PrinterDto, UserDto } from "../shared/types.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { IconJobs, IconLibrary, IconLogout, IconPresets, IconPrinter, IconSliders, IconUser, IconUsers } from "./components/Icons.js";
 import { BrandMark, Notice } from "./components/ui.js";
@@ -64,6 +64,8 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
   const [printers, setPrinters] = useState<PrinterDto[] | null>(null);
   const [jobsKey, setJobsKey] = useState(0);
   const { error, fail, clear } = useAsyncError();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const navigatedRef = useRef(false);
 
   const refreshPrinters = useCallback(async () => {
     try {
@@ -90,6 +92,14 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
   const current = pages.find(p => p.id === page) ?? pages[0]!;
   const pending = (printers ?? []).reduce((n, p) => n + p.pendingChanges, 0);
   const list = printers ?? [];
+
+  // A page change moves focus to its heading, so keyboard and screen reader users land where the new content starts.
+  useEffect(() => {
+    document.title = `${current.title} · printmax`;
+    if (navigatedRef.current)
+      headingRef.current?.focus();
+    navigatedRef.current = true;
+  }, [current.title]);
 
   return (
     <div className="app">
@@ -129,7 +139,7 @@ function Shell({ user, onSignedOut }: { user: UserDto; onSignedOut: () => void }
         <main className="page">
           <div className="page-header">
             <div>
-              <h1>{current.title}</h1>
+              <h1 ref={headingRef} tabIndex={-1}>{current.title}</h1>
               <p>{current.description}</p>
             </div>
           </div>
