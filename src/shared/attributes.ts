@@ -138,6 +138,13 @@ export function toggleIsOn(options: Record<string, unknown>, defaults: Record<st
   return value === true || value === "true";
 }
 
+/** The primary options decided on every job (paper, sides, colour), which sit in the open; the rest of the primary set folds under "Finishing and paper". */
+const QUICK_OPTIONS = new Set(["copies", "sides", "print-color-mode", "media", `${PPD_PREFIX}PageSize`, `${PPD_PREFIX}Duplex`, `${PPD_PREFIX}ColorType`, `${PPD_PREFIX}ColorModel`]);
+
+export function isQuickOption(name: string): boolean {
+  return QUICK_OPTIONS.has(name);
+}
+
 export function isPrimaryOption(name: string): boolean {
   if (name === FIT_TO_MARGINS || name === FIT_TO_PAGE)
     return true;

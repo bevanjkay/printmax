@@ -347,6 +347,10 @@ details.disclosure > summary:hover { background: var(--surface-2); }
 details.disclosure > summary .chev { transition: transform var(--dur) var(--ease); color: var(--text-3); }
 details.disclosure[open] > summary .chev { transform: rotate(90deg); }
 details.disclosure > .disclosure-body { padding: 10px 0 0; }
+details.disclosure > summary { max-width: 100%; }
+details.disclosure > summary .disclosure-note { min-width: 0; font-weight: 400; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.disclosure + details.disclosure { margin-top: 4px; }
+.presets-hint { margin-top: 8px; }
 /* ---------- accordion ---------- */
 
 .accordion { margin-top: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }

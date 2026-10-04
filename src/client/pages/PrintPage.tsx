@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import type { DocumentSize, FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useEffect, useRef, useState } from "react";
-import { isPrimaryOption } from "../../shared/attributes.js";
+import { isPrimaryOption, isQuickOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { IconAlert, IconCheck, IconChevron, IconInfo, Spinner } from "../components/Icons.js";
 import { JobsTable } from "../components/JobsTable.js";
@@ -110,7 +110,9 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const all = fields ?? [];
   const copiesField = all.filter(f => f.name === "copies");
   const primaryNames = all.filter(f => isPrimaryOption(f.name)).map(f => f.name);
-  const quick = all.filter(f => isPrimaryOption(f.name) && f.name !== "copies");
+  const quick = all.filter(f => isQuickOption(f.name) && f.name !== "copies");
+  const finishing = all.filter(f => isPrimaryOption(f.name) && !isQuickOption(f.name));
+  const finishingSummary = fields ? summariseOptions(fields, options, finishing.map(f => f.name), { changesOnly: true }) : "";
   const more = all.filter(f => !isPrimaryOption(f.name));
   const adjustable = all.filter(f => f.name !== "copies");
   const hasPresets = presets.length > 0;
@@ -173,20 +175,36 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
                 {(!hasPresets || preset === null) && (
                   <>
                     {quick.length > 0 && <OptionsForm fields={quick} value={options} onChange={setOptions} friendly />}
+                    {finishing.length > 0 && (
+                      <details className="disclosure">
+                        <summary>
+                          <IconChevron className="icon chev" />
+                          Finishing and paper
+                          <span className="disclosure-note">{`· ${finishingSummary || "printer defaults"}`}</span>
+                        </summary>
+                        <div className="disclosure-body">
+                          <OptionsForm fields={finishing} value={options} onChange={setOptions} friendly />
+                        </div>
+                      </details>
+                    )}
                     {more.length > 0 && (
                       <details className="disclosure">
                         <summary>
                           <IconChevron className="icon chev" />
                           More options
-                          <span className="muted" style={{ fontWeight: 400 }}>{`· ${more.length} more the printer supports`}</span>
+                          <span className="disclosure-note">{`· ${more.length} more`}</span>
                         </summary>
                         <div className="disclosure-body">
                           <OptionsForm fields={more} value={options} onChange={setOptions} />
                         </div>
                       </details>
                     )}
-                    {!hasPresets && isAdmin && (
-                      <p className="help" style={{ marginTop: 8 }}>No presets for this printer yet. Save the usual settings as a preset and printing becomes one choice.</p>
+                    {!hasPresets && (
+                      <p className="help presets-hint">
+                        {isAdmin
+                          ? "No presets for this printer yet. Save the usual settings as a preset and printing becomes one choice."
+                          : "No presets for this printer yet. An administrator can save the usual settings, such as a booklet, as a preset so printing becomes one choice."}
+                      </p>
                     )}
                   </>
                 )}
@@ -196,7 +214,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
                     <summary>
                       <IconChevron className="icon chev" />
                       Adjust this job
-                      <span className="muted" style={{ fontWeight: 400 }}>· changes apply to this print only</span>
+                      <span className="disclosure-note">· changes apply to this print only</span>
                     </summary>
                     <div className="disclosure-body">
                       <OptionsForm fields={adjustable} value={options} onChange={setOptions} />
