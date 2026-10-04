@@ -9,8 +9,8 @@ import { JobsTable } from "../components/JobsTable.js";
 import { OptionsForm } from "../components/OptionsForm.js";
 import { Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
-import { useJobs } from "../hooks.js";
-import { defaultsFrom, describeReason, jobReasons, pdfPageSize, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
+import { useChosenPrinter, useJobs } from "../hooks.js";
+import { defaultsFrom, describeReason, jobReasons, pdfPageSize, remember, remembered, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -37,6 +37,9 @@ interface JobFormProps {
 }
 
 const CUSTOM = "custom";
+
+/** Where the preset last printed with on a printer is remembered, so the next job starts there. */
+const presetKey = (printerId: number) => `printmax:preset:${printerId}`;
 
 /** Keyed by printer id by the parent so options and presets reload when the printer changes; the file lives in the parent. */
 function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onSending, onSubmitted, onFailed }: JobFormProps) {
@@ -65,7 +68,9 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
         return;
       setFields(f);
       setPresets(p);
-      const first = p.find(x => x.problems.length === 0);
+      const usable = p.filter(x => x.problems.length === 0);
+      const last = Number(remembered(presetKey(printer.id)));
+      const first = usable.find(x => x.id === last) ?? usable[0];
       setPresetId(first?.id ?? null);
       setOptions(first ? { ...defaultsFrom(f), ...first.options } : defaultsFrom(f));
     }).catch(fail);
@@ -96,6 +101,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
       return;
     clear();
     onSending();
+    remember(presetKey(printer.id), String(presetId ?? ""));
     try {
       onSubmitted(await api.submitJob(printer.id, presetId, file, options));
     }
@@ -298,14 +304,13 @@ function SentJob({ job, printerName, onTryAgain, onChangeSettings, onPrintAnothe
 }
 
 export function PrintPage({ printers, loading, jobsKey, isAdmin, onSubmitted, onGoToJobs }: Props) {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>("form");
   const [submitted, setSubmitted] = useState<JobDto | null>(null);
   // Kept after the form clears, so a job the printer refused can be sent again without choosing the file again.
   const [sentFile, setSentFile] = useState<File | null>(null);
   const [formKey, setFormKey] = useState(0);
-  const printer = printers.find(p => p.id === selectedId) ?? printers[0];
+  const [printer, setSelectedId] = useChosenPrinter(printers);
   const { jobs, error, refresh } = useJobs({ all: false, limit: 5, refreshKey: jobsKey });
   // The job list is polling anyway, so the panel can follow the job the printer is actually doing.
   const live = submitted === null ? null : jobs?.find(j => j.id === submitted.id) ?? submitted;

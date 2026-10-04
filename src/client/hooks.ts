@@ -1,7 +1,7 @@
-import type { JobDto } from "../shared/types.js";
+import type { JobDto, PrinterDto } from "../shared/types.js";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { useAsyncError } from "./util.js";
+import { remember, remembered, useAsyncError } from "./util.js";
 
 /** Polls the job list every few seconds; `refreshKey` forces an immediate reload. */
 export function useJobs(opts: { all: boolean; limit?: number; refreshKey?: number }) {
@@ -25,4 +25,16 @@ export function useJobs(opts: { all: boolean; limit?: number; refreshKey?: numbe
   }, [refresh, opts.refreshKey]);
 
   return { jobs, error, refresh };
+}
+
+const PRINTER_KEY = "printmax:printer";
+
+/** The printer last chosen on any page, so Print, Presets and Library open on the same one. */
+export function useChosenPrinter(printers: PrinterDto[]): [PrinterDto | undefined, (id: number) => void] {
+  const [id, setId] = useState(() => Number(remembered(PRINTER_KEY)) || null);
+  const choose = useCallback((next: number) => {
+    setId(next);
+    remember(PRINTER_KEY, String(next));
+  }, []);
+  return [printers.find(p => p.id === id) ?? printers[0], choose];
 }

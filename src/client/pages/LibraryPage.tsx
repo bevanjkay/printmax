@@ -7,6 +7,7 @@ import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, NumberInput, Panel, SkeletonRows } from "../components/ui.js";
+import { useChosenPrinter } from "../hooks.js";
 import { sectionOpen, withSection } from "../sections.js";
 import { formatDate, summariseOptions, useAsyncError } from "../util.js";
 
@@ -354,8 +355,7 @@ function matches(entry: StoredJobDto, query: string): boolean {
 }
 
 export function LibraryPage({ user, printers, onPrinted }: Props) {
-  const [printerId, setPrinterId] = useState<number | null>(null);
-  const printer = printers.find(p => p.id === printerId) ?? printers[0];
+  const [printer, setPrinterId] = useChosenPrinter(printers);
   const [entries, setEntries] = useState<StoredJobDto[] | null>(null);
   const [groups, setGroups] = useState<LibraryGroupDto[]>([]);
   const [presets, setPresets] = useState<PresetDto[]>([]);

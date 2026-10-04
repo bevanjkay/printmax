@@ -42,6 +42,25 @@ export function formatTime(iso: string): string {
   return TIME_FORMAT.format(new Date(iso));
 }
 
+/** Browser storage for small conveniences; a private window that refuses it just forgets. */
+export function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  }
+  catch {
+    return null;
+  }
+}
+
+export function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  }
+  catch {
+    // not kept
+  }
+}
+
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
