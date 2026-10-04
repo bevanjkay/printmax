@@ -34,12 +34,39 @@ export function pdfPageSize(bytes: Uint8Array): DocumentSize | null {
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
+export function formatBytes(n: number): string {
+  if (n < 1024)
+    return `${n} B`;
+  if (n < 1024 * 1024)
+    return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function formatDate(iso: string): string {
   return DATE_FORMAT.format(new Date(iso));
 }
 
 export function formatTime(iso: string): string {
   return TIME_FORMAT.format(new Date(iso));
+}
+
+/** Browser storage for small conveniences; a private window that refuses it just forgets. */
+export function remembered(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  }
+  catch {
+    return null;
+  }
+}
+
+export function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  }
+  catch {
+    // not kept
+  }
 }
 
 export function errorMessage(e: unknown): string {
@@ -114,6 +141,62 @@ export function stateTone(state: string, reasons: string[] = []): Tone {
   if (state === "processing-stopped")
     return reasons.some(r => !BENIGN_REASONS.has(r)) ? "warning" : "progress";
   return STATE_TONES[state] ?? "neutral";
+}
+
+const STATE_LABELS: Record<string, string> = {
+  "queued": "Waiting to send",
+  "retrying": "Retrying",
+  "pending": "Queued",
+  "pending-held": "On hold",
+  "processing": "Printing",
+  "processing-stopped": "Paused",
+  "completed": "Printed",
+  "canceled": "Cancelled",
+  "aborted": "Failed",
+  "failed": "Failed",
+  "unknown": "Unknown",
+  "idle": "Ready",
+  "stopped": "Stopped",
+};
+
+/** The badge word for a job or printer state; the IPP keyword stays available as a tooltip. */
+export function stateLabel(state: string, reasons: string[] = []): string {
+  if (state === "processing-stopped" && stateTone(state, reasons) === "progress")
+    return "Printing";
+  return STATE_LABELS[state] ?? sentence(state);
+}
+
+/** The job-state-reasons people meet, in their words; the rest are spelled out from the keyword. */
+const JOB_REASON_TEXT: Record<string, string> = {
+  "document-format-error": "The printer can't read this kind of file",
+  "unsupported-document-format": "The printer can't read this kind of file",
+  "document-unprintable-error": "The printer couldn't draw part of the document",
+  "document-access-error": "The printer couldn't fetch the document",
+  "compression-error": "The document arrived damaged",
+  "job-canceled-by-user": "Cancelled from printmax",
+  "job-canceled-by-operator": "Cancelled by an operator",
+  "job-canceled-at-device": "Cancelled at the printer",
+  "aborted-by-system": "The printer gave up on it",
+  "job-completed-with-errors": "Finished, but the printer reported errors",
+  "job-completed-with-warnings": "Finished, with warnings from the printer",
+  "job-hold-until-specified": "Held until someone releases it at the printer",
+  "printer-stopped": "The printer is stopped",
+  "printer-stopped-partly": "Part of the printer is stopped",
+};
+
+/** Job reasons worth showing: the ones that explain a stop, a failure or a hold, in plain words. */
+export function jobReasons(reasons: string[]): string[] {
+  return reasons.filter(r => !BENIGN_REASONS.has(r)).map(r => JOB_REASON_TEXT[r] ?? sentence(r));
+}
+
+function sentence(keyword: string): string {
+  return keyword.replace(/-/g, " ").replace(/^\w/, c => c.toUpperCase());
+}
+
+/** "3 presets, 1 library document and 212 jobs" from the counts that aren't zero. */
+export function countList(parts: Array<[number, string]>): string {
+  const words = parts.filter(([n]) => n > 0).map(([n, noun]) => `${n} ${n === 1 ? noun : `${noun}s`}`);
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0] ?? "";
 }
 
 /** Choice labels that say "nothing special" and add nothing to a summary. */

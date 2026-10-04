@@ -2,9 +2,9 @@ import type { FormEvent } from "react";
 import type { UserDto } from "../../shared/types.js";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { ConfirmButton } from "../components/ConfirmButton.js";
+import { RemoveDialog } from "../components/RemoveDialog.js";
 import { Badge, Button, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
-import { formatDate, useAsyncError } from "../util.js";
+import { countList, formatDate, useAsyncError } from "../util.js";
 
 function ResetPassword({ user, onDone }: { user: UserDto; onDone: () => void }) {
   const [value, setValue] = useState("");
@@ -86,17 +86,6 @@ export function UsersPage({ me }: { me: UserDto }) {
     }
   }
 
-  async function remove(user: UserDto) {
-    clear();
-    try {
-      await api.deleteUser(user.id);
-      await refresh();
-    }
-    catch (err) {
-      fail(err);
-    }
-  }
-
   return (
     <div className="split narrow-aside">
       <div className="stack">
@@ -126,7 +115,7 @@ export function UsersPage({ me }: { me: UserDto }) {
                           {u.id === me.id
                             ? <Badge tone="info" plain>Admin</Badge>
                             : (
-                                <select className="control" style={{ width: "auto" }} aria-label={`Role of ${u.name}`} value={u.role} onChange={e => void changeRole(u, e.target.value as "admin" | "user")}>
+                                <select className="control inline" aria-label={`Role of ${u.name}`} value={u.role} onChange={e => void changeRole(u, e.target.value as "admin" | "user")}>
                                   <option value="user">User</option>
                                   <option value="admin">Admin</option>
                                 </select>
@@ -138,7 +127,20 @@ export function UsersPage({ me }: { me: UserDto }) {
                             : (
                                 <>
                                   <Button size="sm" onClick={() => setResetting(u.id)}>Reset password</Button>
-                                  {u.id !== me.id && <ConfirmButton size="sm" label="Delete" confirmLabel="Delete user?" onConfirm={() => void remove(u)} />}
+                                  {u.id !== me.id && (
+                                    <RemoveDialog
+                                      label="Delete"
+                                      title={`Delete ${u.name}?`}
+                                      confirmLabel="Delete user"
+                                      load={() => api.userRemoval(u.id)}
+                                      describe={({ presets, libraryDocuments, jobs }) => {
+                                        const goes = countList([[presets, "personal preset"], [libraryDocuments, "library document"]]);
+                                        const kept = jobs > 0 ? ` Their ${jobs === 1 ? "job stays" : `${jobs} jobs stay`} in the history without their name.` : "";
+                                        return `${goes ? `This also deletes their ${goes}.` : "They have no personal presets or library documents."}${kept} This can't be undone.`;
+                                      }}
+                                      onConfirm={() => api.deleteUser(u.id).then(refresh)}
+                                    />
+                                  )}
                                 </>
                               )}
                         </td>
@@ -148,7 +150,6 @@ export function UsersPage({ me }: { me: UserDto }) {
                 </table>
               )}
         </div>
-        <p className="help">Deleting a user removes their personal presets. Their job history stays.</p>
       </div>
       <form onSubmit={create}>
         <Panel title="Add a user" footer={<Button type="submit" variant="primary" loading={busy}>Create user</Button>}>

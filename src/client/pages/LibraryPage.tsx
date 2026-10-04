@@ -7,21 +7,14 @@ import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, NumberInput, Panel, SkeletonRows } from "../components/ui.js";
+import { useChosenPrinter } from "../hooks.js";
 import { sectionOpen, withSection } from "../sections.js";
-import { formatDate, summariseOptions, useAsyncError } from "../util.js";
+import { formatBytes, formatDate, summariseOptions, useAsyncError } from "../util.js";
 
 interface Props {
   user: UserDto;
   printers: PrinterDto[];
   onPrinted: () => void;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024)
-    return `${n} B`;
-  if (n < 1024 * 1024)
-    return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function documentCount(n: number): string {
@@ -311,7 +304,7 @@ function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
+      <NumberInput className="control copies" min={1} max={999} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
@@ -354,8 +347,7 @@ function matches(entry: StoredJobDto, query: string): boolean {
 }
 
 export function LibraryPage({ user, printers, onPrinted }: Props) {
-  const [printerId, setPrinterId] = useState<number | null>(null);
-  const printer = printers.find(p => p.id === printerId) ?? printers[0];
+  const [printer, setPrinterId] = useChosenPrinter(printers);
   const [entries, setEntries] = useState<StoredJobDto[] | null>(null);
   const [groups, setGroups] = useState<LibraryGroupDto[]>([]);
   const [presets, setPresets] = useState<PresetDto[]>([]);
@@ -437,8 +429,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
     <div className="stack">
       <div className="toolbar">
         <select
-          className="control"
-          style={{ width: "auto", minWidth: 220 }}
+          className="control inline printer-pick"
           aria-label="Printer"
           value={printer.id}
           onChange={(e) => {
@@ -517,7 +508,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                 <EmptyState
                   icon={<IconLibrary />}
                   title={`Nothing in the library for ${printer.name}`}
-                  description="Keep the documents you print regularly here with the preset they use. Add one now, or use Keep on any job in the Jobs list."
+                  description="Keep the documents you print regularly here with the preset they use. Add one now, or use Save to Library on any job in the Jobs list."
                   action={<Button variant="primary" icon={<IconPlus />} onClick={() => setEditing("new")}>Add the first document</Button>}
                 />
               )
@@ -531,12 +522,12 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                   />
                 )
               : (
-                  <table className="table">
+                  <table className="table library">
                     <thead>
                       <tr>
                         <th>Document</th>
                         <th>Prints as</th>
-                        <th>Visibility</th>
+                        <th>Who can use it</th>
                         <th>Last printed</th>
                         <th>Status</th>
                         <th className="actions"><span className="sr-only">Actions</span></th>
@@ -566,20 +557,20 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                           )}
                           {(groups.length === 0 || isOpen(section)) && section.items.map(entry => (
                             <tr key={entry.id}>
-                              <td>
+                              <td className="document">
                                 <div className="primary">{entry.name}</div>
                                 <div className="meta">{`${entry.filename} · ${formatBytes(entry.byteSize)}`}</div>
                               </td>
-                              <td>
+                              <td className="prints-as">
                                 <div>{entry.presetName ?? (entry.presetId === null && Object.keys(entry.effectiveOptions).length === 0 ? "Printer defaults" : "Saved settings")}</div>
                                 <div className="meta">{summariseOptions(fields, entry.effectiveOptions, primaryNames, { changesOnly: true })}</div>
                               </td>
-                              <td><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
-                              <td className="meta num">
+                              <td className="scope"><Badge plain>{entry.scope === "global" ? "Everyone" : "Only me"}</Badge></td>
+                              <td className="meta num last-printed">
                                 {entry.lastPrintedAt ? formatDate(entry.lastPrintedAt) : "Never"}
                                 {entry.printCount > 0 && <div className="meta">{`${entry.printCount} ${entry.printCount === 1 ? "time" : "times"}`}</div>}
                               </td>
-                              <td>
+                              <td className="status">
                                 {entry.problems.length > 0 ? <Badge tone="danger">Needs attention</Badge> : <Badge tone="success">Ready</Badge>}
                                 {entry.problems.length > 0 && <div className="meta danger-text">{entry.problems.join("; ")}</div>}
                               </td>
@@ -628,7 +619,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                             >
                                               Replace file
                                             </Button>
-                                            <ConfirmButton size="sm" label="Delete" confirmLabel="Delete from library?" onConfirm={() => void remove(entry)} />
+                                            <ConfirmButton size="sm" label="Delete" confirmLabel="Delete it?" onConfirm={() => void remove(entry)} />
                                           </>
                                         )}
                                       </>

@@ -8,6 +8,7 @@ import { IconDownload, IconPlus, IconPresets, IconUpload } from "../components/I
 import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
+import { useChosenPrinter } from "../hooks.js";
 import { useAsyncError, useDebounced } from "../util.js";
 
 interface Props {
@@ -173,8 +174,7 @@ function optionValueLabel(fields: FormField[], key: string, value: unknown): str
 }
 
 export function PresetsPage({ user, printers }: Props) {
-  const [printerId, setPrinterId] = useState<number | null>(null);
-  const printer = printers.find(p => p.id === printerId) ?? printers[0];
+  const [printer, setPrinterId] = useChosenPrinter(printers);
   const [presets, setPresets] = useState<PresetDto[] | null>(null);
   const [fields, setFields] = useState<FormField[]>([]);
   const [editing, setEditing] = useState<PresetDto | null | "new">(null);
@@ -252,8 +252,7 @@ export function PresetsPage({ user, printers }: Props) {
     <div className="stack">
       <div className="toolbar">
         <select
-          className="control"
-          style={{ width: "auto", minWidth: 220 }}
+          className="control inline printer-pick"
           aria-label="Printer"
           value={printer.id}
           onChange={(e) => {
@@ -332,7 +331,7 @@ export function PresetsPage({ user, printers }: Props) {
                   <thead>
                     <tr>
                       <th>Preset</th>
-                      <th>Visibility</th>
+                      <th>Who can use it</th>
                       <th>Settings</th>
                       <th>Status</th>
                       <th className="actions"><span className="sr-only">Actions</span></th>
@@ -367,7 +366,7 @@ export function PresetsPage({ user, printers }: Props) {
                           {p.editable && (
                             <>
                               <Button size="sm" onClick={() => setEditing(p)}>Edit</Button>
-                              <ConfirmButton size="sm" label="Delete" confirmLabel="Delete preset?" onConfirm={() => void remove(p)} />
+                              <ConfirmButton size="sm" label="Delete" confirmLabel="Delete it?" onConfirm={() => void remove(p)} />
                             </>
                           )}
                         </td>

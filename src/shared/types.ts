@@ -8,6 +8,16 @@ export interface UserDto {
   createdAt: string;
 }
 
+/**
+ * What a removal takes with it, counted before anything goes. A printer's jobs are deleted with it;
+ * a user's jobs stay in the history without their name.
+ */
+export interface RemovalImpact {
+  presets: number;
+  libraryDocuments: number;
+  jobs: number;
+}
+
 export interface AuthState {
   user: UserDto | null;
   needsSetup: boolean;

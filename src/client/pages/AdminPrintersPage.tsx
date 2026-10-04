@@ -7,8 +7,9 @@ import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconPrinter, IconRefresh, IconSearch, IconUpload } from "../components/Icons.js";
-import { Badge, Button, EmptyState, Field, Notice, Panel } from "../components/ui.js";
-import { describeReason, formatDate, stateTone, useAsyncError } from "../util.js";
+import { RemoveDialog } from "../components/RemoveDialog.js";
+import { Badge, Button, EmptyState, Field, Notice, Panel, StateBadge } from "../components/ui.js";
+import { countList, describeReason, formatDate, useAsyncError } from "../util.js";
 
 type Caps = Record<string, { type: string; values: unknown[] }>;
 
@@ -98,7 +99,7 @@ function Discovery({ onPick }: { onPick: (p: DiscoveredPrinter) => void }) {
       <div className="panel-body">
         <p className="help">Looks for printers announcing themselves with Bonjour on this network. Inside Docker this needs host networking; adding by address always works.</p>
         {error && <Notice tone="error">{error}</Notice>}
-        {found && found.length === 0 && <p className="help" style={{ marginTop: 10 }}>Nothing answered. The printer may be on another network, or not advertise itself.</p>}
+        {found && found.length === 0 && <p className="help discovery-empty">Nothing answered. The printer may be on another network, or not advertise itself.</p>}
       </div>
       {found && found.length > 0 && (
         <table className="table">
@@ -152,26 +153,11 @@ function Changes({ printer, onChanged }: { printer: PrinterDto; onChanged: () =>
       Presets that rely on removed values are flagged on the Presets page.
       {error && <div className="danger-text">{error}</div>}
       {changes.map(c => (
-        <div key={c.id} style={{ marginTop: 8 }}>
+        <div key={c.id} className="caps-change">
           <div className="xs muted">{formatDate(c.fetchedAt)}</div>
-          {c.added.length > 0 && (
-            <div>
-              Added:
-              {c.added.join(", ")}
-            </div>
-          )}
-          {c.removed.length > 0 && (
-            <div>
-              Removed:
-              {c.removed.join(", ")}
-            </div>
-          )}
-          {c.changed.length > 0 && (
-            <div>
-              Changed:
-              {c.changed.join(", ")}
-            </div>
-          )}
+          {c.added.length > 0 && <div>{`Added: ${c.added.join(", ")}`}</div>}
+          {c.removed.length > 0 && <div>{`Removed: ${c.removed.join(", ")}`}</div>}
+          {c.changed.length > 0 && <div>{`Changed: ${c.changed.join(", ")}`}</div>}
           <Button size="sm" onClick={() => ack(c.id)}>Dismiss</Button>
         </div>
       ))}
@@ -265,15 +251,15 @@ function Overrides({ printer, onChanged }: { printer: PrinterDto; onChanged: () 
               {" "}
               <span className="muted">{a.values.map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ")}</span>
             </span>
-            <Button size="sm" variant="danger" onClick={() => removeOverride(name)}>Reset to reported</Button>
+            <Button size="sm" onClick={() => removeOverride(name)}>Reset to reported</Button>
           </div>
         ))}
         <form className="row" onSubmit={addValue}>
-          <select className="control" style={{ width: "auto", minWidth: 200 }} aria-label="Attribute" value={attr} onChange={e => setAttr(e.target.value)}>
+          <select className="control inline wide" aria-label="Attribute" value={attr} onChange={e => setAttr(e.target.value)}>
             <option value="">Choose an attribute</option>
             {listAttrs.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
-          <input className="control" style={{ width: "auto", minWidth: 180 }} aria-label="Value to add" list="override-values" value={value} onChange={e => setValue(e.target.value)} placeholder={suggestions[0] ?? "value"} />
+          <input className="control inline wide" aria-label="Value to add" list="override-values" value={value} onChange={e => setValue(e.target.value)} placeholder={suggestions[0] ?? "value"} />
           <datalist id="override-values">
             {suggestions.map(v => <option key={v} value={v} />)}
           </datalist>
@@ -359,14 +345,14 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
               }}
             />
             <Button size="sm" icon={<IconUpload />} loading={busy} onClick={() => fileRef.current?.click()}>{printer.ppd ? "Replace PPD" : "Upload PPD"}</Button>
-            {printer.ppd && <ConfirmButton size="sm" label="Remove PPD" confirmLabel="Remove PPD and return to IPP?" disabled={busy} onConfirm={() => void run(() => api.clearPpd(printer.id))} />}
+            {printer.ppd && <ConfirmButton size="sm" label="Remove PPD" confirmLabel="Back to IPP?" disabled={busy} onConfirm={() => void run(() => api.clearPpd(printer.id))} />}
           </span>
         </div>
         <div className="row between small">
           <span>Send jobs as</span>
           <div className="segmented" role="group" aria-label="Print mode">
-            <button type="button" className={postscript ? "" : "active"} disabled={busy} onClick={() => void run(() => api.setPrintMode(printer.id, "ipp"))}>IPP attributes</button>
-            <button type="button" className={postscript ? "active" : ""} disabled={busy || !printer.ppd} title={printer.ppd ? undefined : "Upload a PPD first"} onClick={() => void run(() => api.setPrintMode(printer.id, "postscript"))}>PostScript via PPD</button>
+            <button type="button" className={postscript ? "" : "active"} aria-pressed={!postscript} disabled={busy} onClick={() => void run(() => api.setPrintMode(printer.id, "ipp"))}>IPP attributes</button>
+            <button type="button" className={postscript ? "active" : ""} aria-pressed={postscript} disabled={busy || !printer.ppd} title={printer.ppd ? undefined : "Upload a PPD first"} onClick={() => void run(() => api.setPrintMode(printer.id, "postscript"))}>PostScript via PPD</button>
           </div>
         </div>
         {postscript && <p className="xs muted">Presets made in IPP mode are flagged until they are re-saved with PPD options. Copies still travels as an IPP attribute.</p>}
@@ -496,13 +482,24 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
       title={(
         <span className="row">
           {printer.name}
-          <Badge tone={stateTone(s.state)}>{s.state}</Badge>
+          <StateBadge state={s.state} />
         </span>
       )}
       actions={(
         <>
           <Button size="sm" icon={<IconRefresh />} loading={busy} onClick={() => run(() => api.refreshPrinter(printer.id))}>Re-fetch</Button>
-          <ConfirmButton size="sm" label="Remove" confirmLabel="Remove printer and its presets?" disabled={busy} onConfirm={() => void run(() => api.deletePrinter(printer.id))} />
+          <RemoveDialog
+            label="Remove"
+            title={`Remove ${printer.name}?`}
+            confirmLabel="Remove printer"
+            disabled={busy}
+            load={() => api.printerRemoval(printer.id)}
+            describe={({ presets, libraryDocuments, jobs }) => {
+              const goes = countList([[presets, "preset"], [libraryDocuments, "library document"], [jobs, "job"]]);
+              return `${goes ? `This also deletes its ${goes}.` : "Nothing else is attached to it."} This can't be undone.`;
+            }}
+            onConfirm={() => api.deletePrinter(printer.id).then(onChanged)}
+          />
         </>
       )}
     >

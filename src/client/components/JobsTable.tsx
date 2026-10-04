@@ -3,7 +3,8 @@ import type { JobDto } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
 import { ACTIVE_JOB_STATES } from "../../shared/types.js";
 import { api } from "../api.js";
-import { formatDate, formatTime, useAsyncError } from "../util.js";
+import { formatDate, formatTime, jobReasons, useAsyncError } from "../util.js";
+import { ConfirmButton } from "./ConfirmButton.js";
 import { IconInbox, IconLibrary, IconRefresh } from "./Icons.js";
 import { Button, EmptyState, Notice, NumberInput, SkeletonRows, StateBadge } from "./ui.js";
 
@@ -29,7 +30,7 @@ function Reprint({ job, onDone, onError }: { job: JobDto; onDone: () => void; on
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <NumberInput min={1} max={999} style={{ width: 76 }} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={setCopies} />
+      <NumberInput className="control copies" min={1} max={999} aria-label={`Copies of ${job.filename}`} autoFocus value={copies} onChange={setCopies} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
     </form>
@@ -59,14 +60,14 @@ function Keep({ job, canShare, onDone, onError }: { job: JobDto; canShare: boole
 
   return (
     <form className="inline-form" onSubmit={submit}>
-      <input className="control" required style={{ width: 150 }} aria-label="Library name" autoFocus value={name} onChange={e => setName(e.target.value)} />
+      <input className="control library-name" required aria-label="Library name" autoFocus value={name} onChange={e => setName(e.target.value)} />
       {canShare && (
         <select className="control" aria-label="Who can use it" value={scope} onChange={e => setScope(e.target.value as "global" | "user")}>
           <option value="global">Everyone</option>
           <option value="user">Only me</option>
         </select>
       )}
-      <Button type="submit" size="sm" variant="primary" loading={busy}>Keep</Button>
+      <Button type="submit" size="sm" variant="primary" loading={busy}>Save</Button>
       <Button size="sm" variant="ghost" onClick={() => onDone("")}>Cancel</Button>
     </form>
   );
@@ -139,11 +140,11 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                     const isNew = !seenRef.current.has(job.id);
                     seenRef.current.add(job.id);
                     const detail = [
-                      job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null,
-                      ...job.stateReasons,
+                      ...jobReasons(job.stateReasons),
                       job.stateMessage,
-                      job.state === "retrying" && job.nextAttemptAt ? `retrying at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
+                      job.state === "retrying" && job.nextAttemptAt ? `Trying again at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
                     ].filter(Boolean).join(" · ");
+                    const keywords = [job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null, ...job.stateReasons].filter(Boolean).join(" · ");
                     return (
                       <tr key={job.id} className={isNew ? "new" : undefined}>
                         <td className="num id muted">{job.id}</td>
@@ -151,8 +152,8 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                         {showUser && <td className="user">{job.userName ?? "—"}</td>}
                         <td className="printer">{job.printerName ?? job.printerId}</td>
                         <td className="state"><StateBadge state={job.state} reasons={job.stateReasons} /></td>
-                        <td className="meta" title={detail || undefined}>
-                          {detail || "—"}
+                        <td className="meta" title={keywords || undefined}>
+                          {detail || (job.error ? null : "—")}
                           {job.error && <div className="danger-text">{job.error}</div>}
                         </td>
                         <td className="meta num created">{formatDate(job.createdAt)}</td>
@@ -209,11 +210,11 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                                     setKeeping(job.id);
                                   }}
                                 >
-                                  Keep
+                                  Save to Library
                                 </Button>
                               )}
                               {(ACTIVE_JOB_STATES as readonly string[]).includes(job.state) && (
-                                <button type="button" className="btn btn-sm btn-danger" onClick={() => cancel(job.id)}>Cancel</button>
+                                <ConfirmButton size="sm" label="Cancel job" confirmLabel="Stop it?" onConfirm={() => void cancel(job.id)} />
                               )}
                             </>
                           )}
