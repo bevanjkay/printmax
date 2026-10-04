@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
-import { createUser, deleteUser, listUsers, setPassword, setRole, toUserDto } from "../auth.js";
+import { createUser, deleteUser, listUsers, setPassword, setRole, toUserDto, userRemovalImpact } from "../auth.js";
 import { HttpError } from "../errors.js";
 import { idParam } from "./params.js";
 
@@ -27,6 +27,8 @@ export function userRoutes(app: FastifyInstance, db: Db): void {
     const body = (req.body ?? {}) as { role?: unknown };
     return toUserDto(setRole(db, id, body.role));
   });
+
+  app.get("/api/users/:id/removal", async req => userRemovalImpact(db, idParam(req.params)));
 
   app.delete("/api/users/:id", async (req, reply) => {
     const id = idParam(req.params);

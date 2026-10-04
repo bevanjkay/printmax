@@ -7,8 +7,9 @@ import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconPrinter, IconRefresh, IconSearch, IconUpload } from "../components/Icons.js";
+import { RemoveDialog } from "../components/RemoveDialog.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel } from "../components/ui.js";
-import { describeReason, formatDate, stateTone, useAsyncError } from "../util.js";
+import { countList, describeReason, formatDate, stateTone, useAsyncError } from "../util.js";
 
 type Caps = Record<string, { type: string; values: unknown[] }>;
 
@@ -502,7 +503,18 @@ function PrinterCard({ printer, onChanged }: { printer: PrinterDto; onChanged: (
       actions={(
         <>
           <Button size="sm" icon={<IconRefresh />} loading={busy} onClick={() => run(() => api.refreshPrinter(printer.id))}>Re-fetch</Button>
-          <ConfirmButton size="sm" label="Remove" confirmLabel="Remove printer and its presets?" disabled={busy} onConfirm={() => void run(() => api.deletePrinter(printer.id))} />
+          <RemoveDialog
+            label="Remove"
+            title={`Remove ${printer.name}?`}
+            confirmLabel="Remove printer"
+            disabled={busy}
+            load={() => api.printerRemoval(printer.id)}
+            describe={({ presets, libraryDocuments, jobs }) => {
+              const goes = countList([[presets, "preset"], [libraryDocuments, "library document"], [jobs, "job"]]);
+              return `${goes ? `This also deletes its ${goes}${jobs > 0 ? ", job history included" : ""}.` : "Nothing else is attached to it."} This can't be undone.`;
+            }}
+            onConfirm={() => api.deletePrinter(printer.id).then(onChanged)}
+          />
         </>
       )}
     >

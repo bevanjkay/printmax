@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, DocumentSize, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
+import type { AuthState, CapsChangeDto, DiscoveredPrinter, DocumentSize, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, RemovalImpact, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -40,6 +40,7 @@ export const api = {
   probe: (printerId: number, options: Options) => request<ProbeResult>(`/api/printers/${printerId}/probe`, json("POST", { options })),
   addPrinter: (input: { name?: string; uri: string; username?: string; password?: string }) => request<PrinterDto>("/api/printers", json("POST", input)),
   refreshPrinter: (id: number) => request<PrinterDto>(`/api/printers/${id}/refresh`, json("POST")),
+  printerRemoval: (id: number) => request<RemovalImpact>(`/api/printers/${id}/removal`),
   deletePrinter: (id: number) => request<void>(`/api/printers/${id}`, json("DELETE")),
   setDefaults: (id: number, defaults: Record<string, unknown>) => request<PrinterDto>(`/api/printers/${id}/defaults`, json("PUT", defaults)),
   setPpd: (id: number, ppd: string) => request<PrinterDto>(`/api/printers/${id}/ppd`, json("PUT", { ppd })),
@@ -101,6 +102,7 @@ export const api = {
   listUsers: () => request<UserDto[]>("/api/users"),
   setUserRole: (id: number, role: "admin" | "user") => request<UserDto>(`/api/users/${id}/role`, json("PUT", { role })),
   createUser: (input: { name: string; email: string; password: string; role: "admin" | "user" }) => request<UserDto>("/api/users", json("POST", input)),
+  userRemoval: (id: number) => request<RemovalImpact>(`/api/users/${id}/removal`),
   deleteUser: (id: number) => request<void>(`/api/users/${id}`, json("DELETE")),
   setUserPassword: (id: number, password: string) => request<void>(`/api/users/${id}/password`, json("POST", { password })),
 };

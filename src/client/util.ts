@@ -116,6 +116,12 @@ export function stateTone(state: string, reasons: string[] = []): Tone {
   return STATE_TONES[state] ?? "neutral";
 }
 
+/** "3 presets, 1 library document and 212 jobs" from the counts that aren't zero. */
+export function countList(parts: Array<[number, string]>): string {
+  const words = parts.filter(([n]) => n > 0).map(([n, noun]) => `${n} ${n === 1 ? noun : `${noun}s`}`);
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0] ?? "";
+}
+
 /** Choice labels that say "nothing special" and add nothing to a summary. */
 const SILENT_LABELS = new Set(["none", "off", "false", "no", "auto", "automatic", "auto (default)", "printer's default", "printer default", "normal"]);
 const ON_LABELS = new Set(["on", "true", "yes"]);
