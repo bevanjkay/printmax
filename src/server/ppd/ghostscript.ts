@@ -1,4 +1,4 @@
-/** PDF to DSC PostScript through Ghostscript's ps2write device. */
+/** PDF to DSC PostScript through Ghostscript's ps2write device, or to a greyscale PDF through pdfwrite. */
 import type { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -64,7 +64,11 @@ export interface ConvertOptions {
    * default, which on a large sheet costs hundreds of megabytes of detail the engine cannot image.
    */
   resolution?: { x: number; y: number };
+  /** Convert every colour to grey, so the printer has no colour to print whatever its colour mode. */
+  grayscale?: boolean;
 }
+
+const GRAYSCALE_ARGS = ["-sColorConversionStrategy=Gray", "-dProcessColorModel=/DeviceGray"];
 
 /**
  * A page-device Install hook, so the transform becomes part of the default matrix that every page
@@ -145,15 +149,9 @@ export async function largestPdfPage(pdfPath: string, opts: Pick<ConvertOptions,
 }
 
 export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}): Promise<Buffer> {
-  const file = path.resolve(pdfPath);
-  // A booklet's PostScript runs to hundreds of megabytes, far past what a pipe buffer can hold,
-  // so Ghostscript writes it to a file we then measure before taking it into memory.
-  const dir = await mkdtemp(path.join(tmpdir(), "printmax-ps-"));
-  const out = path.join(dir, "document.ps");
-  // No -dPDFSTOPONERROR: a PDF with a stale xref or a bad stream length is what most tools emit, and
-  // every reader of one repairs it silently. Refusing those is refusing ordinary documents; what is
-  // worth refusing is the `**** Error:` below, which is Ghostscript saying the output is not the document.
-  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=ps2write", "-dLanguageLevel=3"];
+  const args = ["-sDEVICE=ps2write", "-dLanguageLevel=3"];
+  if (opts.grayscale)
+    args.push(...GRAYSCALE_ARGS);
   if (opts.resolution)
     args.push(`-r${Math.round(opts.resolution.x)}x${Math.round(opts.resolution.y)}`);
   if (opts.paper) {
@@ -161,14 +159,36 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
     if (opts.fitToPaper)
       args.push("-dPDFFitPage");
   }
-  // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.
-  // Pass the path as a string parameter rather than interpolating it into PostScript code.
   // An unfitted page is placed by us, margins and all; a fitted one is already on the sheet and only
   // needs the margin shrink. Both are one Install hook, because the second would replace the first.
   const place = opts.paper && !opts.fitToPaper && opts.documentPage
     ? placeOnPaper(opts.documentPage, opts.margins)
     : opts.margins ? fitInsideMargins(opts.margins) : "";
-  args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${place} PDFFile (r) file runpdf`);
+  return convertPdf(pdfPath, "document.ps", args, place, opts);
+}
+
+/**
+ * The same document as a PDF in shades of grey, for a printer that takes the PDF itself. Images are
+ * kept lossless rather than re-encoded as JPEG, which would soften them a second time.
+ */
+export async function pdfToGrayscalePdf(pdfPath: string, opts: Pick<ConvertOptions, "signal" | "timeoutMs" | "maxOutputBytes"> = {}): Promise<Buffer> {
+  const args = ["-sDEVICE=pdfwrite", ...GRAYSCALE_ARGS, "-dAutoFilterGrayImages=false", "-sGrayImageFilter=FlateEncode"];
+  return convertPdf(pdfPath, "document.pdf", args, "", opts);
+}
+
+async function convertPdf(pdfPath: string, outName: string, deviceArgs: string[], setup: string, opts: ConvertOptions): Promise<Buffer> {
+  const file = path.resolve(pdfPath);
+  // A booklet's PostScript runs to hundreds of megabytes, far past what a pipe buffer can hold,
+  // so Ghostscript writes it to a file we then measure before taking it into memory.
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-gs-"));
+  const out = path.join(dir, outName);
+  // No -dPDFSTOPONERROR: a PDF with a stale xref or a bad stream length is what most tools emit, and
+  // every reader of one repairs it silently. Refusing those is refusing ordinary documents; what is
+  // worth refusing is the `**** Error:` below, which is Ghostscript saying the output is not the document.
+  const args = ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", ...deviceArgs];
+  // Invoke the PDF interpreter explicitly: a forged PDF header must never execute PostScript.
+  // Pass the path as a string parameter rather than interpolating it into PostScript code.
+  args.push(`-sOutputFile=${out}`, "-sstdout=%stderr", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", `${setup} PDFFile (r) file runpdf`);
   try {
     let messages = "";
     try {
@@ -184,7 +204,7 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
     catch (err) {
       const e = err as NodeJS.ErrnoException & { stderr?: Buffer; signal?: string };
       if (e.code === "ENOENT")
-        throw new Error("Ghostscript (gs) is not installed on the server; PostScript mode needs it");
+        throw new Error("Ghostscript (gs) is not installed on the server; PostScript mode and black and white printing need it");
       if (opts.signal?.aborted)
         throw new Error("Ghostscript failed: conversion canceled");
       if (e.signal === "SIGKILL")
@@ -198,7 +218,7 @@ export async function pdfToPostScript(pdfPath: string, opts: ConvertOptions = {}
     const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     const { size } = await stat(out);
     if (size > limit)
-      throw new Error(`Ghostscript failed: the PostScript for this document is ${mb(size)}, over the ${mb(limit)} output size limit`);
+      throw new Error(`Ghostscript failed: the converted document is ${mb(size)}, over the ${mb(limit)} output size limit`);
     return await readFile(out);
   }
   finally {

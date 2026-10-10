@@ -85,8 +85,8 @@ export function libraryRoutes(app: FastifyInstance, db: Db, dirs: { storedDir: s
   });
 
   app.post("/api/library/:id/print", async (req, reply) => {
-    const body = (req.body ?? {}) as { copies?: unknown };
-    const job = await printStoredJob(db, idParam(req.params), { copies: body.copies }, req.user!, dirs.uploadDir);
+    const body = (req.body ?? {}) as { copies?: unknown; options?: unknown };
+    const job = await printStoredJob(db, idParam(req.params), { copies: body.copies, options: body.options }, req.user!, dirs.uploadDir);
     return reply.code(201).send(toJobDto(db, job));
   });
 

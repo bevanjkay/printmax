@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import type { CapsChangeDto, DiscoveredPrinter, FormField, PrinterDto } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
-import { FIT_TO_MARGINS, FIT_TO_PAGE, keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
+import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, isOwnOption, keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
 import { enumValue } from "../../shared/enums.js";
 import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
@@ -364,8 +364,7 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
 
 const labels = (xs: string[]) => xs.map(keywordLabel).join(", ") || "—";
 
-const OWN_OPTIONS: string[] = [FIT_TO_PAGE, FIT_TO_MARGINS];
-const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested", FIT_TO_PAGE, FIT_TO_MARGINS];
+const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested", BLACK_AND_WHITE, FIT_TO_PAGE, FIT_TO_MARGINS];
 
 /** Per-printer defaults for the print form, e.g. A4 instead of the printer's own Letter. Stored as `<attribute>-default` overrides. */
 function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () => void }) {
@@ -440,7 +439,7 @@ function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () =
                 onChange={e => setDraft({ ...draft, [f.name]: e.target.value })}
               >
                 <option value="">
-                  {`${OWN_OPTIONS.includes(f.name) ? "printmax's own" : "Printer's own"}${!overridden.has(f.name) && f.default !== undefined ? ` (${f.choices?.find(c => String(c.value) === String(f.default))?.label ?? String(f.default)})` : ""}`}
+                  {`${isOwnOption(f.name) ? "printmax's own" : "Printer's own"}${!overridden.has(f.name) && f.default !== undefined ? ` (${f.choices?.find(c => String(c.value) === String(f.default))?.label ?? String(f.default)})` : ""}`}
                 </option>
                 {f.choices?.map(c => <option key={String(c.value)} value={String(c.value)}>{c.label}</option>)}
               </select>

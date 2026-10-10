@@ -6,9 +6,9 @@ import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, submitJob } from "../src/server/jobs.js";
-import { pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
-vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn(), largestPdfPage: vi.fn().mockResolvedValue({ width: 842, height: 595 }) }));
+vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), largestPdfPage: vi.fn().mockResolvedValue({ width: 842, height: 595 }) }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
 
 const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
@@ -22,7 +22,20 @@ function convert(options: Record<string, unknown>, optionDefaults: Record<string
   return submitJob(db, job as JobRow).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
 }
 
+/** Submits a job to a printer in IPP mode and returns what went to the printer. */
+async function sendIpp(options: Record<string, unknown>, documentFormat = "application/pdf", optionDefaults: Record<string, unknown> = {}) {
+  const db = openDb(":memory:");
+  const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
+  db.prepare("INSERT INTO printers (name, uri, created_at, option_defaults) VALUES (?, ?, ?, ?)")
+    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), JSON.stringify(optionDefaults));
+  const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: new URL(import.meta.url).pathname, byteSize: 10, documentFormat, options });
+  await submitJob(db, job as JobRow);
+  return vi.mocked(printJob).mock.calls.at(-1)![1];
+}
+
 beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(pdfToGrayscalePdf).mockResolvedValue(Buffer.from("%PDF-1.7 grey"));
   vi.mocked(pdfToPostScript).mockResolvedValue(Buffer.from("%!PS-Adobe-3.0\n%%Page: 1 1\nshowpage\n"));
   vi.mocked(printJob).mockResolvedValue({ jobId: 1, state: "completed", stateReasons: [] });
 });
@@ -48,4 +61,25 @@ it("measures the document only when its pages are the ones being placed", async 
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ documentPage: { width: 842, height: 595 } });
   // Fitted, every page is scaled to the sheet, so its own size decides nothing.
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).not.toHaveProperty("documentPage");
+});
+
+it("converts a black and white job to greyscale, whether the job or the printer asks", async () => {
+  expect(await convert({ "ppd:PageSize": "A4", "black-and-white": "true" })).toMatchObject({ grayscale: true });
+  expect(await convert({ "ppd:PageSize": "A4" }, { "black-and-white": "true" })).toMatchObject({ grayscale: true });
+  expect(await convert({ "ppd:PageSize": "A4", "black-and-white": "false" }, { "black-and-white": "true" })).toMatchObject({ grayscale: false });
+  expect(await convert({ "ppd:PageSize": "A4" })).toMatchObject({ grayscale: false });
+});
+
+it("sends a greyscale PDF in IPP mode, without telling the printer about an option it has never heard of", async () => {
+  const sent = await sendIpp({ "copies": 2, "black-and-white": "true" });
+  expect(String(sent.data)).toBe("%PDF-1.7 grey");
+  expect(Object.keys(sent.jobAttributes ?? {})).toEqual(["copies"]);
+  expect(String((await sendIpp({ copies: 2 })).data)).not.toBe("%PDF-1.7 grey");
+  expect(vi.mocked(pdfToGrayscalePdf)).toHaveBeenCalledTimes(1);
+});
+
+it("refuses black and white for a file it cannot convert, rather than print it in colour", async () => {
+  await expect(sendIpp({ "black-and-white": "true" }, "image/png")).rejects.toThrow("PDFs only");
+  await expect(sendIpp({}, "image/png", { "black-and-white": "true" })).rejects.toThrow("PDFs only");
+  await expect(sendIpp({ "black-and-white": "sometimes" })).rejects.toThrow("must be true or false");
 });

@@ -7,7 +7,7 @@ import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
 import { copyFile, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { FIT_TO_MARGINS, FIT_TO_PAGE, toggleIsOn } from "../shared/attributes.js";
+import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, toggleIsOn, withoutOwnOptions } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { IppStatusError, IppTransportError } from "./ipp/client.js";
@@ -17,7 +17,7 @@ import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/ope
 import { buildJobAttributes } from "./ipp/options.js";
 import { assemblePostScript } from "./ppd/assemble.js";
 import { marginsFor, ppdChoices } from "./ppd/form.js";
-import { largestPdfPage, pdfToPostScript } from "./ppd/ghostscript.js";
+import { largestPdfPage, pdfToGrayscalePdf, pdfToPostScript } from "./ppd/ghostscript.js";
 import { canUsePreset, getPreset } from "./presets.js";
 import { getPrinter, profileFor, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
 import { validateJobOptions } from "./validation.js";
@@ -131,6 +131,8 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
   const errors = validateJobOptions(options, profile);
   if (errors.length > 0)
     throw new HttpError(422, errors.join("; "));
+  if (input.documentFormat !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false))
+    throw new HttpError(415, "Black and white converts PDFs only; turn it off to print this file");
 
   const timestamp = now();
   const result = db.prepare(`
@@ -192,7 +194,7 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
   try {
     const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
       ? await postScriptDocument(job, profile.ppd, options, profile.optionDefaults, caps, userName, controller.signal, limits)
-      : { data: await readFile(job.file_path), documentFormat: job.document_format, jobAttributes: buildJobAttributes(options, caps) };
+      : await ippDocument(job, options, profile.optionDefaults, caps, controller.signal);
     if (controller.signal.aborted)
       return;
     const status = await printJob(targetFor(printer), {
@@ -235,6 +237,15 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
   }
 }
 
+/** The upload as it came, or in greyscale when the job asks for black and white. */
+async function ippDocument(job: JobRow, options: Record<string, unknown>, defaults: Record<string, unknown>, caps: IppAttributes, signal: AbortSignal) {
+  const grayscale = job.document_format === "application/pdf" && toggleIsOn(options, defaults, BLACK_AND_WHITE, false);
+  const data = grayscale
+    ? await pdfToGrayscalePdf(job.file_path!, { signal })
+    : await readFile(job.file_path!);
+  return { data, documentFormat: job.document_format, jobAttributes: buildJobAttributes(withoutOwnOptions(options), caps) };
+}
+
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
 async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, defaults: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
   const chosen = ppdChoices(options);
@@ -249,6 +260,7 @@ async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<s
   const document = await pdfToPostScript(job.file_path!, {
     signal,
     fitToPaper,
+    grayscale: toggleIsOn(options, defaults, BLACK_AND_WHITE, false),
     ...(documentPage ? { documentPage } : {}),
     ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
     ...(ppd.resolution ? { resolution: ppd.resolution } : {}),

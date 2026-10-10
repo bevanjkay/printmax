@@ -6,7 +6,7 @@ import type { FormField } from "../shared/types.js";
  */
 import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRange, IppResolution, IppValue } from "./ipp/codec.js";
 import type { PrinterProfile } from "./printers.js";
-import { ATTRIBUTE_UI, FIT_TO_MARGINS, FIT_TO_PAGE, HIDDEN_ATTRIBUTES, keywordLabel, toggleIsOn } from "../shared/attributes.js";
+import { ATTRIBUTE_UI, BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, HIDDEN_ATTRIBUTES, keywordLabel, toggleIsOn } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
 import { mediaColMembers } from "./ipp/options.js";
@@ -117,10 +117,24 @@ export function buildForm(caps: IppAttributes): FormField[] {
   return fields;
 }
 
+/** Offered only where there is colour to take out; a printer that does not say is assumed to have it. */
+function blackAndWhiteField(profile: PrinterProfile): FormField[] {
+  if (attrValue(profile.caps, "color-supported") === false)
+    return [];
+  return [{
+    name: BLACK_AND_WHITE,
+    label: "Black and white",
+    widget: "select",
+    help: "Converts the document to greyscale before it is sent, so the printer has no colour to print whatever its colour setting. PDF only.",
+    choices: [{ value: "false", label: "Off" }, { value: "true", label: "On" }],
+    default: String(toggleIsOn({}, profile.optionDefaults, BLACK_AND_WHITE, false)),
+  }];
+}
+
 /** The form for a printer in its current mode: IPP attributes, or copies plus the PPD's options. */
 export function formFor(profile: PrinterProfile): FormField[] {
   if (profile.mode !== "postscript" || !profile.ppd)
-    return buildForm(profile.caps);
+    return [...buildForm(profile.caps), ...blackAndWhiteField(profile)];
   const copies = buildForm(profile.caps).find(f => f.name === "copies") ?? { name: "copies", label: "Copies", widget: "number" as const, min: 1, max: 999, default: 1 };
   const margins: FormField = {
     name: FIT_TO_MARGINS,
@@ -138,7 +152,7 @@ export function formFor(profile: PrinterProfile): FormField[] {
     choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }],
     default: String(toggleIsOn({}, profile.optionDefaults, FIT_TO_PAGE, true)),
   };
-  return [copies, page, margins, ...ppdFields(profile.ppd)];
+  return [copies, ...blackAndWhiteField(profile), page, margins, ...ppdFields(profile.ppd)];
 }
 
 /** Initial option map for a printer: every field's default, in option-map form. */
