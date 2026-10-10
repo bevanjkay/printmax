@@ -4,7 +4,7 @@ import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import { unlinkSync } from "node:fs";
-import { FIT_TO_MARGINS, FIT_TO_PAGE } from "../shared/attributes.js";
+import { isOwnOption } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
@@ -41,9 +41,6 @@ export interface PrinterProfile {
   /** printmax's own options set for this printer, which the IPP capabilities cannot describe. */
   optionDefaults: Record<string, unknown>;
 }
-
-/** printmax's own job options, which have no `<attribute>-supported` to validate a default against. */
-const OWN_OPTIONS = new Set<string>([FIT_TO_PAGE, FIT_TO_MARGINS]);
 
 const ppdCache = new Map<number, { text: string; parsed: ParsedPpd }>();
 
@@ -251,7 +248,7 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
   const problems: string[] = [];
   for (const [name, value] of Object.entries(defaults)) {
     // printmax's own options are not IPP attributes, so they are kept beside the capability overrides.
-    if (OWN_OPTIONS.has(name)) {
+    if (isOwnOption(name)) {
       if (value === null || value === undefined || value === "")
         delete own[name];
       else if (value === true || value === false || value === "true" || value === "false")

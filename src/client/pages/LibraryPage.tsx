@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import type { FormField, LibraryGroupDto, PresetDto, PrinterDto, StoredJobDto, UserDto } from "../../shared/types.js";
 import type { SectionToggles } from "../sections.js";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { isPrimaryOption } from "../../shared/attributes.js";
+import { BLACK_AND_WHITE, isPrimaryOption } from "../../shared/attributes.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
@@ -283,15 +283,17 @@ function GroupManager({ printer, groups, onChanged, onClose, onError }: GroupMan
   );
 }
 
-function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto; onDone: () => void; onCancel: () => void; onError: (err: unknown) => void }) {
+/** The copies and the black and white toggle, both starting from what the entry's preset says. */
+function PrintCopies({ entry, blackAndWhiteField, onDone, onCancel, onError }: { entry: StoredJobDto; blackAndWhiteField: FormField | undefined; onDone: () => void; onCancel: () => void; onError: (err: unknown) => void }) {
   const [copies, setCopies] = useState(Number(entry.effectiveOptions.copies ?? 1) || 1);
+  const [blackAndWhite, setBlackAndWhite] = useState(String(entry.effectiveOptions[BLACK_AND_WHITE] ?? blackAndWhiteField?.default) === "true");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.printStoredJob(entry.id, copies);
+      await api.printStoredJob(entry.id, copies, blackAndWhiteField ? { [BLACK_AND_WHITE]: String(blackAndWhite) } : undefined);
       onDone();
     }
     catch (err) {
@@ -305,6 +307,12 @@ function PrintCopies({ entry, onDone, onCancel, onError }: { entry: StoredJobDto
   return (
     <form className="inline-form" onSubmit={submit}>
       <NumberInput className="control copies" min={1} max={999} aria-label={`Copies of ${entry.name}`} autoFocus value={copies} onChange={setCopies} />
+      {blackAndWhiteField && (
+        <label className="check">
+          <input type="checkbox" checked={blackAndWhite} onChange={e => setBlackAndWhite(e.target.checked)} />
+          Black and white
+        </label>
+      )}
       <Button type="submit" size="sm" variant="primary" loading={busy}>{copies === 1 ? "Print 1 copy" : `Print ${copies} copies`}</Button>
       <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
@@ -579,6 +587,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                   ? (
                                       <PrintCopies
                                         entry={entry}
+                                        blackAndWhiteField={entry.documentFormat === "application/pdf" ? fields.find(f => f.name === BLACK_AND_WHITE) : undefined}
                                         onDone={() => {
                                           setPrinting(null);
                                           setPrinted(`${entry.name} is queued. Watch it under Jobs.`);

@@ -5,12 +5,23 @@
  */
 import type { DocumentSize } from "../shared/types.js";
 import type { PrinterProfile } from "./printers.js";
-import { FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX, toggleIsOn } from "../shared/attributes.js";
+import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX, toggleIsOn } from "../shared/attributes.js";
 import { checkConstraints, describeViolation } from "./ipp/constraints.js";
 import { validateOptions } from "./ipp/options.js";
 import { ppdChoices, validatePpdOptions } from "./ppd/form.js";
 
+function isToggle(value: unknown): boolean {
+  return value === true || value === false || value === "true" || value === "false";
+}
+
 export function validateJobOptions(options: Record<string, unknown>, profile: PrinterProfile): string[] {
+  const { [BLACK_AND_WHITE]: blackAndWhite, ...rest } = options;
+  if (blackAndWhite !== undefined && !isToggle(blackAndWhite))
+    return [`"${BLACK_AND_WHITE}" must be true or false`];
+  return validatePrinterOptions(rest, profile);
+}
+
+function validatePrinterOptions(options: Record<string, unknown>, profile: PrinterProfile): string[] {
   if (profile.mode === "postscript" && profile.ppd) {
     const errors: string[] = [];
     const ipp: Record<string, unknown> = {};
@@ -19,7 +30,7 @@ export function validateJobOptions(options: Record<string, unknown>, profile: Pr
         ipp[name] = value;
       }
       else if (name === FIT_TO_MARGINS || name === FIT_TO_PAGE) {
-        if (value !== true && value !== false && value !== "true" && value !== "false")
+        if (!isToggle(value))
           errors.push(`"${name}" must be true or false`);
       }
       else if (!name.startsWith(PPD_PREFIX)) {

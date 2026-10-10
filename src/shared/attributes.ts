@@ -127,6 +127,20 @@ export const FIT_TO_MARGINS = "fit-to-margins";
 /** printmax's own PostScript-mode option: scale each page to the chosen paper rather than print it at its own size. */
 export const FIT_TO_PAGE = "fit-to-page";
 
+/** printmax's own option, in either mode: convert the document to greyscale, so the printer has no colour to print whatever its colour mode. */
+export const BLACK_AND_WHITE = "black-and-white";
+
+const OWN_OPTIONS = new Set([FIT_TO_PAGE, FIT_TO_MARGINS, BLACK_AND_WHITE]);
+
+export function isOwnOption(name: string): boolean {
+  return OWN_OPTIONS.has(name);
+}
+
+/** The job's IPP attributes: its options less printmax's own, which the printer has never heard of. */
+export function withoutOwnOptions(options: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(options).filter(([name]) => !OWN_OPTIONS.has(name)));
+}
+
 /**
  * A printmax toggle as the job, then the printer's own setting, then the built-in default decide it.
  * A job queued before a toggle existed says nothing, and must keep behaving as it did.
@@ -139,14 +153,14 @@ export function toggleIsOn(options: Record<string, unknown>, defaults: Record<st
 }
 
 /** The primary options decided on every job (paper, sides, colour), which sit in the open; the rest of the primary set folds under "Finishing and paper". */
-const QUICK_OPTIONS = new Set(["copies", "sides", "print-color-mode", "media", `${PPD_PREFIX}PageSize`, `${PPD_PREFIX}Duplex`, `${PPD_PREFIX}ColorType`, `${PPD_PREFIX}ColorModel`]);
+const QUICK_OPTIONS = new Set(["copies", BLACK_AND_WHITE, "sides", "print-color-mode", "media", `${PPD_PREFIX}PageSize`, `${PPD_PREFIX}Duplex`, `${PPD_PREFIX}ColorType`, `${PPD_PREFIX}ColorModel`]);
 
 export function isQuickOption(name: string): boolean {
   return QUICK_OPTIONS.has(name);
 }
 
 export function isPrimaryOption(name: string): boolean {
-  if (name === FIT_TO_MARGINS || name === FIT_TO_PAGE)
+  if (OWN_OPTIONS.has(name))
     return true;
   return name.startsWith(PPD_PREFIX) ? PRIMARY_PPD_OPTIONS.includes(name.slice(PPD_PREFIX.length)) : PRIMARY_ATTRIBUTES.includes(name);
 }

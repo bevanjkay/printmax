@@ -252,12 +252,14 @@ export async function deleteStoredJob(db: Db, id: number, user: UserRow): Promis
   await unlink(existing.file_path).catch(() => {});
 }
 
-/** Queues the document as a normal job with the entry's effective options and the chosen copies. */
-export async function printStoredJob(db: Db, id: number, input: { copies?: unknown }, user: UserRow, uploadDir: string) {
+/** Queues the document as a normal job with the entry's effective options, any chosen at print time over them, and the chosen copies. */
+export async function printStoredJob(db: Db, id: number, input: { copies?: unknown; options?: unknown }, user: UserRow, uploadDir: string) {
   const row = requireStoredJob(db, id);
   if (!canUseStoredJob(row, user))
     throw notFound("library entry");
-  const options = effectiveOptions(db, row);
+  if (input.options !== undefined && (typeof input.options !== "object" || input.options === null || Array.isArray(input.options)))
+    throw new HttpError(400, "options must be an object");
+  const options = { ...effectiveOptions(db, row), ...(input.options as Record<string, unknown> | undefined) };
   if (input.copies !== undefined && input.copies !== null && input.copies !== "") {
     const copies = Number(input.copies);
     if (!Number.isInteger(copies) || copies < 1)

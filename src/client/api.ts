@@ -96,7 +96,7 @@ export const api = {
     form.append("file", file);
     return request<StoredJobDto>(`/api/library/${id}/file`, { method: "PUT", body: form });
   },
-  printStoredJob: (id: number, copies?: number) => request<JobDto>(`/api/library/${id}/print`, json("POST", copies === undefined ? {} : { copies })),
+  printStoredJob: (id: number, copies?: number, options?: Options) => request<JobDto>(`/api/library/${id}/print`, json("POST", { ...(copies === undefined ? {} : { copies }), ...(options ? { options } : {}) })),
   deleteStoredJob: (id: number) => request<void>(`/api/library/${id}`, json("DELETE")),
 
   listUsers: () => request<UserDto[]>("/api/users"),

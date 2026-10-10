@@ -1,6 +1,7 @@
 import type { ProbeResult } from "../shared/types.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
 import type { PrinterRow } from "./printers.js";
+import { withoutOwnOptions } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { HttpError } from "./errors.js";
 import { IppTransportError } from "./ipp/client.js";
@@ -27,7 +28,7 @@ export async function probeOptions(printer: PrinterRow, options: Record<string, 
   const caps = capsFor(printer);
   let jobAttributes: IppAttributes;
   try {
-    jobAttributes = buildJobAttributes(options, caps);
+    jobAttributes = buildJobAttributes(withoutOwnOptions(options), caps);
   }
   catch (err) {
     throw new HttpError(400, (err as Error).message);

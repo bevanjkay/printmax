@@ -423,6 +423,14 @@ describe("aPI", () => {
       expect((await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { copies: 0 } }))).statusCode).toBe(400);
     });
 
+    it("prints an entry in black and white when asked at print time, over what its preset says", async () => {
+      const res = await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { copies: 1, options: { "black-and-white": "true" } } }));
+      expect(res.statusCode, res.body).toBe(201);
+      expect(res.json<JobDto>().options).toMatchObject({ "copies": 1, "black-and-white": "true" });
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { options: { "black-and-white": "maybe" } } }))).statusCode).toBe(422);
+      expect((await app.inject(as(userCookie, { method: "POST", url: `/api/library/${sharedId}/print`, payload: { options: ["black-and-white"] } }))).statusCode).toBe(400);
+    });
+
     it("keeps a printed job for oneself, storing only what differed from its preset", async () => {
       const user = (await app.inject(as(userCookie, { method: "GET", url: "/api/auth/me" }))).json().user as UserDto;
       const presets = (await app.inject(as(userCookie, { method: "GET", url: `/api/presets?printerId=${printerId}` }))).json<PresetDto[]>();

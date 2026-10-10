@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { formFor } from "../src/server/form.js";
 import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/assemble.js";
 import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
-import { ghostscriptAvailable, largestPdfPage, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { ghostscriptAvailable, largestPdfPage, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
 
@@ -79,6 +79,28 @@ async function box(ps: Buffer): Promise<number[]> {
   try {
     const { stderr } = await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=bbox", "-dFirstPage=1", "-dLastPage=1", file]);
     return /%%BoundingBox: (\d+) (\d+) (\d+) (\d+)/.exec(stderr)!.slice(1).map(Number);
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The first page's largest gap between an RGB pixel's channels: 0 for a page in shades of grey.
+ * Read off a raster rather than an ink device, whose split of grey into C, M, Y and K varies by version.
+ */
+async function colourfulness(document: Buffer, extension: string): Promise<number> {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-colour-"));
+  const file = path.join(dir, `document.${extension}`);
+  await writeFile(file, document);
+  try {
+    const { stdout } = await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-r36", "-dFirstPage=1", "-dLastPage=1", "-sDEVICE=ppmraw", "-o", "-", file], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 });
+    const header = /^P6\s+(?:#[^\n]*(?:\n\s*|[\t\v\f\r \xA0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]))*(\d+)\s+(\d+)\s+255\s/.exec(stdout.subarray(0, 200).toString("latin1"))!;
+    const pixels = stdout.subarray(header[0].length, header[0].length + Number(header[1]) * Number(header[2]) * 3);
+    let gap = 0;
+    for (let at = 0; at < pixels.length; at += 3)
+      gap = Math.max(gap, Math.abs(pixels[at]! - pixels[at + 1]!), Math.abs(pixels[at + 1]! - pixels[at + 2]!), Math.abs(pixels[at]! - pixels[at + 2]!));
+    return gap;
   }
   finally {
     await rm(dir, { recursive: true, force: true });
@@ -234,7 +256,7 @@ describe("pPD options as a form and in validation", () => {
     expect(validateJobOptions({ "fit-to-page": "sometimes" }, profile)[0]).toMatch(/must be true or false/);
     // Fitting to the sheet is what a driver does by default, so the form starts with it on.
     expect(formFor(profile).find(f => f.name === "fit-to-page")?.default).toBe("true");
-    expect(formFor(profile).map(f => f.name).slice(0, 3)).toEqual(["copies", "fit-to-page", "fit-to-margins"]);
+    expect(formFor(profile).map(f => f.name).slice(0, 4)).toEqual(["copies", "black-and-white", "fit-to-page", "fit-to-margins"]);
     // An admin's choice for the printer becomes what the form starts on.
     expect(formFor({ ...profile, optionDefaults: { "fit-to-page": "false" } }).find(f => f.name === "fit-to-page")?.default).toBe("false");
     expect(validateJobOptions({ sides: "one-sided" }, profile)[0]).toMatch(/"sides" is not used in PostScript mode/);
@@ -402,6 +424,24 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
       await rm(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("takes every colour out of a black and white job, vectors and images alike, in either mode", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-grayscale-"));
+    try {
+      const vectors = path.join(dir, "vectors.pdf");
+      const image = path.join(dir, "image.pdf");
+      await writeFile(vectors, transparentPdf());
+      await writeFile(image, noisyImagePdf(64, 64));
+      for (const file of [vectors, image]) {
+        expect(await colourfulness(await pdfToPostScript(file, { resolution: { x: 72, y: 72 } }), "ps")).toBeGreaterThan(64);
+        expect(await colourfulness(await pdfToPostScript(file, { grayscale: true, resolution: { x: 72, y: 72 } }), "ps")).toBeLessThanOrEqual(2);
+        expect(await colourfulness(await pdfToGrayscalePdf(file), "pdf")).toBeLessThanOrEqual(2);
+      }
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
   it("converts a PDF to DSC PostScript with one %%Page per page, forcing the paper when asked", async () => {
     const ps = (await pdfToPostScript(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname, { paper: { width: 595, height: 842 } })).toString("latin1");

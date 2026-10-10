@@ -1,10 +1,20 @@
 import type { IppAttributes } from "../src/server/ipp/codec.js";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildForm } from "../src/server/form.js";
+import { buildForm, formFor } from "../src/server/form.js";
 import { keywordLabel } from "../src/shared/attributes.js";
 
 const caps = JSON.parse(readFileSync(new URL("../fixtures/ippeveprinter.json", import.meta.url), "utf8")) as IppAttributes;
+const toshiba = JSON.parse(readFileSync(new URL("../fixtures/toshiba-e-studio3515ac.json", import.meta.url), "utf8")) as IppAttributes;
+
+describe("formFor", () => {
+  it("offers black and white only where there is colour to take out, defaulting to the printer's own setting", () => {
+    const field = (c: IppAttributes, optionDefaults: Record<string, unknown> = {}) => formFor({ caps: c, ppd: null, mode: "ipp", optionDefaults }).find(f => f.name === "black-and-white");
+    expect(field(caps)).toBeUndefined();
+    expect(field(toshiba)?.default).toBe("false");
+    expect(field(toshiba, { "black-and-white": "true" })?.default).toBe("true");
+  });
+});
 
 describe("buildForm", () => {
   const fields = buildForm(caps);
