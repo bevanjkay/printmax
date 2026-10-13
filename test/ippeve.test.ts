@@ -96,10 +96,11 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
       ...multipart({ printerId: String(printerId), presetId: String(presetId), options: JSON.stringify({ copies: 2 }) }, { name: "hello.pdf", content: MINIMAL_PDF }),
     }));
     expect(res.statusCode, res.body).toBe(201);
-    const job = res.json<{ id: number; state: string; documentFormat: string; options: Record<string, unknown>; presetId: number; userName: string }>();
+    const job = res.json<{ id: number; state: string; documentFormat: string; options: Record<string, unknown>; presetId: number; presetName: string; userName: string }>();
     expect(job.state).toBe("queued");
     expect(job.documentFormat).toBe("application/pdf");
     expect(job.presetId).toBe(presetId);
+    expect(job.presetName).toBe("Duplex");
     expect(job.userName).toBe("Admin");
     expect(job.options).toEqual({ "sides": "two-sided-long-edge", "print-quality": "high", "copies": 2 });
 
@@ -117,6 +118,7 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
       expect(row.ipp_job_id).toBeGreaterThan(0);
       expect(row.state).toBe("completed");
       expect(row.completed_at).not.toBeNull();
+      expect(row.impressions_completed).not.toBeNull();
     }
     finally {
       worker.stop();

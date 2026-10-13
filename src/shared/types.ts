@@ -195,6 +195,7 @@ export interface JobDto {
   printerId: number;
   printerName: string | null;
   presetId: number | null;
+  presetName: string | null;
   filename: string;
   byteSize: number;
   documentFormat: string;
@@ -210,6 +211,8 @@ export interface JobDto {
   submittedAt: string | null;
   completedAt: string | null;
   fileRetained: boolean;
+  impressions: number | null;
+  impressionsCompleted: number | null;
 }
 
 export interface CapsChangeDto {

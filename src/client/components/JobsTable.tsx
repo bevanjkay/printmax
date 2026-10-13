@@ -73,6 +73,13 @@ function Keep({ job, canShare, onDone, onError }: { job: JobDto; canShare: boole
   );
 }
 
+/** "12 of 40 pages printed", or just the count when the printer doesn't know the total. */
+function pagesPrinted({ impressions, impressionsCompleted: done }: JobDto): string | null {
+  if (!done)
+    return null;
+  return impressions ? `${done} of ${impressions} pages printed` : `${done} ${done === 1 ? "page" : "pages"} printed`;
+}
+
 interface Props {
   jobs: JobDto[] | null;
   error: string | null;
@@ -143,12 +150,17 @@ export function JobsTable({ jobs, error, showUser, canShare = false, onChanged, 
                       ...jobReasons(job.stateReasons),
                       job.stateMessage,
                       job.state === "retrying" && job.nextAttemptAt ? `Trying again at ${formatTime(job.nextAttemptAt)} (${job.attempts} so far)` : null,
+                      pagesPrinted(job),
                     ].filter(Boolean).join(" · ");
+                    const copies = Number(job.options.copies ?? 1) || 1;
                     const keywords = [job.ippJobId !== null ? `IPP job ${job.ippJobId}` : null, ...job.stateReasons].filter(Boolean).join(" · ");
                     return (
                       <tr key={job.id} className={isNew ? "new" : undefined}>
                         <td className="num id muted">{job.id}</td>
-                        <td className="primary">{job.filename}</td>
+                        <td className="document">
+                          <div className="primary">{job.filename}</div>
+                          <div className="meta">{[`${copies} ${copies === 1 ? "copy" : "copies"}`, job.presetName].filter(Boolean).join(" · ")}</div>
+                        </td>
                         {showUser && <td className="user">{job.userName ?? "—"}</td>}
                         <td className="printer">{job.printerName ?? job.printerId}</td>
                         <td className="state"><StateBadge state={job.state} reasons={job.stateReasons} /></td>

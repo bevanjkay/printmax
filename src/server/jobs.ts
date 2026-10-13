@@ -42,6 +42,8 @@ export interface JobRow {
   created_at: string;
   submitted_at: string | null;
   completed_at: string | null;
+  impressions: number | null;
+  impressions_completed: number | null;
 }
 
 /** Local states before/around the IPP job states. */
@@ -284,8 +286,8 @@ export async function pollJob(db: Db, job: JobRow, printer: PrinterRow): Promise
   try {
     const status = await getJobAttributes(targetFor(printer), job.ipp_job_id);
     const terminal = TERMINAL_JOB_STATES.has(status.state);
-    db.prepare("UPDATE jobs SET state = ?, state_reasons = ?, state_message = ?, completed_at = ? WHERE id = ?")
-      .run(status.state, JSON.stringify(status.stateReasons), status.stateMessage ?? null, terminal ? now() : null, job.id);
+    db.prepare("UPDATE jobs SET state = ?, state_reasons = ?, state_message = ?, completed_at = ?, impressions = ?, impressions_completed = ? WHERE id = ?")
+      .run(status.state, JSON.stringify(status.stateReasons), status.stateMessage ?? null, terminal ? now() : null, status.impressions ?? null, status.impressionsCompleted ?? null, job.id);
   }
   catch (err) {
     if (err instanceof IppStatusError && (err.status === 0x0406 || err.status === 0x0407)) {
@@ -465,6 +467,7 @@ export async function sweepExpiredFiles(db: Db, retentionDays: number): Promise<
 export function toDto(db: Db, job: JobRow): JobDto {
   const printer = db.prepare("SELECT name FROM printers WHERE id = ?").get(job.printer_id) as { name: string } | undefined;
   const user = job.user_id === null ? undefined : db.prepare("SELECT name FROM users WHERE id = ?").get(job.user_id) as { name: string } | undefined;
+  const preset = job.preset_id === null ? undefined : db.prepare("SELECT name FROM presets WHERE id = ?").get(job.preset_id) as { name: string } | undefined;
   return {
     id: job.id,
     userId: job.user_id,
@@ -472,6 +475,7 @@ export function toDto(db: Db, job: JobRow): JobDto {
     printerId: job.printer_id,
     printerName: printer?.name ?? null,
     presetId: job.preset_id,
+    presetName: preset?.name ?? null,
     filename: job.filename,
     byteSize: job.byte_size,
     documentFormat: job.document_format,
@@ -487,5 +491,7 @@ export function toDto(db: Db, job: JobRow): JobDto {
     submittedAt: job.submitted_at,
     completedAt: job.completed_at,
     fileRetained: job.file_path !== null,
+    impressions: job.impressions,
+    impressionsCompleted: job.impressions_completed,
   };
 }

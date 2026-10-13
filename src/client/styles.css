@@ -456,7 +456,7 @@ details.disclosure + details.disclosure { margin-top: 4px; }
   .table.jobs tbody tr:last-child { border-bottom: 0; }
   .table.jobs td { display: block; padding: 0; border: 0; white-space: normal; max-width: none; }
   .table.jobs td.id, .table.jobs td.user { display: none; }
-  .table.jobs td.primary { grid-column: 1; grid-row: 1; white-space: normal; overflow-wrap: anywhere; }
+  .table.jobs td.document { grid-column: 1; grid-row: 1; overflow-wrap: anywhere; }
   .table.jobs td.state { grid-column: 2; grid-row: 1; }
   .table.jobs td.meta { grid-column: 1 / -1; grid-row: 2; overflow: visible; text-overflow: clip; }
   .table.jobs td.printer { grid-column: 1; grid-row: 3; font-size: var(--fs-xs); color: var(--text-2); }
