@@ -32,6 +32,8 @@ export interface JobStatus {
   stateReasons: string[];
   stateMessage?: string;
   impressionsCompleted?: number;
+  /** The job's total, when the printer knows it; many only count what they have printed. */
+  impressions?: number;
 }
 
 function parseJobStatus(attrs: IppAttributes | undefined, fallbackJobId = 0): JobStatus {
@@ -47,6 +49,9 @@ function parseJobStatus(attrs: IppAttributes | undefined, fallbackJobId = 0): Jo
   const impressions = attrValue<number>(attrs, "job-impressions-completed");
   if (impressions !== undefined)
     status.impressionsCompleted = impressions;
+  const total = attrValue<number>(attrs, "job-impressions");
+  if (total !== undefined)
+    status.impressions = total;
   return status;
 }
 
@@ -115,7 +120,7 @@ export async function validateJob(target: PrinterTarget, input: Omit<PrintJobInp
   }
 }
 
-const JOB_STATUS_ATTRIBUTES = ["job-id", "job-state", "job-state-reasons", "job-state-message", "job-impressions-completed"];
+const JOB_STATUS_ATTRIBUTES = ["job-id", "job-state", "job-state-reasons", "job-state-message", "job-impressions", "job-impressions-completed"];
 
 export async function getJobAttributes(target: PrinterTarget, jobId: number): Promise<JobStatus> {
   const msg = await ippRequest(target, Operation.GetJobAttributes, [

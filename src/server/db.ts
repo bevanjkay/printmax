@@ -133,6 +133,10 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE printers ADD COLUMN option_defaults TEXT NOT NULL DEFAULT '{}';
   `,
+  `
+  ALTER TABLE jobs ADD COLUMN impressions INTEGER;
+  ALTER TABLE jobs ADD COLUMN impressions_completed INTEGER;
+  `,
 ];
 
 export function openDb(file: string): Db {
