@@ -3,6 +3,8 @@
 Self-hosted web app for a homelab or small office: upload a PDF, PNG or JPEG, pick a printer and
 a preset, print. Talks IPP directly to the printer, so there is no CUPS to run or babysit.
 
+Website: <https://bevanjkay.github.io/printmax/>
+
 - **Capability-driven.** The printer's own `Get-Printer-Attributes` response generates the option
   editor, validates every job, and is diffed on each re-fetch so changes are flagged instead of
   silently breaking presets. The only hand-maintained table is labels and widget types.
