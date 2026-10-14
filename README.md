@@ -16,8 +16,8 @@ Website: <https://bevanjkay.github.io/printmax/>
   says it is busy with another job; real rejections surface the printer's own IPP status and message.
 
 Status: milestones M1 to M3 of `print-server-plan.md` are built. M0 (the spike against the office
-Toshiba e-STUDIO) has its capabilities captured as a fixture and Validate-Job checked; a real print
-run is still to be done on-site. Development targets `ippeveprinter`.
+Toshiba e-STUDIO) has its capabilities captured as a fixture and Validate-Job checked, and a booklet
+job printed through printmax on-site in PostScript mode. Development targets `ippeveprinter`.
 
 ## Run
 
@@ -159,14 +159,14 @@ Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/boo
 
 ## Library
 
-The Library keeps documents for good, each paired with a preset: the weekly bulletin, the giving
-envelope, the welcome card. Printing one is a click plus a copies count. Entries can be shared
+The Library keeps documents for good, each paired with a preset: the timesheet, the price list,
+the fax cover. Printing one is a click plus a copies count. Entries can be shared
 with everyone (admins) or personal, like presets, and any job whose file is still on the server
-can be kept from the Jobs list with **Keep**. Files live under `/data/stored` and are never swept
+can be kept from the Jobs list with **Save to Library**. Files live under `/data/stored` and are never swept
 by retention; the preset is followed by reference, so improving it improves every document that
 uses it.
 
-Documents are filed into groups — "Sunday", "Kids", "Office". Admins keep each printer's group
+Documents are filed into groups — "Forms", "Sales", "Reception". Admins keep each printer's group
 list, in the order they choose, from **Groups** on the Library page or with **+ Add new** while
 filing a document; everyone else picks from that list. The library shows one collapsible section
 per group with a count, collapsed to start with and ungrouped documents last, so a long library
