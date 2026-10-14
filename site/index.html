@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>printmax - a self-hosted print page that talks IPP</title>
+<meta name="description" content="printmax is a self-hosted web app for the office or homelab: upload a PDF, pick a printer and a preset, print. It speaks IPP straight to the printer, so there is no CUPS to run.">
+<meta property="og:title" content="printmax">
+<meta property="og:description" content="Upload, pick a preset, print. A self-hosted print page that talks IPP straight to your printers.">
+<meta property="og:image" content="https://bevanjkay.github.io/printmax/screenshot-print.png">
+<meta name="twitter:image" content="https://bevanjkay.github.io/printmax/screenshot-print.png">
+<meta property="og:url" content="https://bevanjkay.github.io/printmax/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="shell nav-inner">
+    <a class="wordmark" href="/printmax/"><img src="favicon.svg" width="22" height="22" alt="">printmax</a>
+    <nav>
+      <a href="#presets">Presets</a>
+      <a href="#postscript">Booklets</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/bevanjkay/printmax">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero shell">
+    <div class="hero-copy">
+      <h1>Upload, pick a preset, print.</h1>
+      <p class="lede">A self-hosted print page for the office or homelab. It speaks IPP straight to your printers, so there is no CUPS to run or babysit.</p>
+      <div class="cta">
+        <a class="button primary" href="#install">Run it with Docker</a>
+        <a class="button" href="https://github.com/bevanjkay/printmax">View on GitHub</a>
+      </div>
+      <p class="meta"><span id="version">Latest image</span> on GHCR · amd64 and arm64 · PDF, PNG and JPEG</p>
+    </div>
+    <div class="hero-shot">
+      <img src="screenshot-print.png" width="2240" height="1440" alt="The printmax Print page: a PDF loaded, the Front office printer marked Ready, and shared presets such as Sunday bulletin and Envelopes to choose from" fetchpriority="high" decoding="async">
+    </div>
+  </section>
+
+  <section class="presets shell" id="presets">
+    <div class="presets-copy">
+      <h2>The printer writes the form</h2>
+      <p>printmax asks each printer for its <code>Get-Printer-Attributes</code> and builds the option editor from the answer. Paper sizes, trays, duplex and finishing are the ones that device actually has, and every job is validated against them before it is sent.</p>
+      <p>Capabilities are fetched again each day and diffed, so a changed tray or a dropped option is flagged instead of quietly breaking a preset.</p>
+    </div>
+    <div class="code-panel">
+      <pre><code><span class="p">{</span>
+  <span class="k">"name"</span>: <span class="s">"Sunday bulletin"</span>,
+  <span class="k">"description"</span>: <span class="s">"A4, double-sided on the long edge"</span>,
+  <span class="k">"scope"</span>: <span class="s">"global"</span>,
+  <span class="k">"options"</span>: <span class="p">{</span>
+    <span class="k">"media"</span>: <span class="s">"iso_a4_210x297mm"</span>,
+    <span class="k">"sides"</span>: <span class="s">"two-sided-long-edge"</span>,
+    <span class="k">"print-color-mode"</span>: <span class="s">"monochrome"</span>,
+    <span class="k">"copies"</span>: <span class="n">40</span>
+  <span class="p">}</span>
+<span class="p">}</span></code></pre>
+    </div>
+  </section>
+
+  <section class="bento shell">
+    <article class="cell cell-wide">
+      <h3>A library for the things you print every week</h3>
+      <p>Keep the bulletin, the welcome card and the giving envelope on the server, each paired with its preset. Printing one again is a click and a copies count. Improve the preset and every document that uses it follows.</p>
+      <div class="groups">
+        <div class="group-row">Sunday<em>3 documents</em></div>
+        <div class="group-row">Kids<em>1 document</em></div>
+        <div class="group-row">Office<em>1 document</em></div>
+      </div>
+    </article>
+
+    <article class="cell cell-accent">
+      <h3>Ask the printer first</h3>
+      <p>Check a preset with an IPP Validate-Job. The device itself confirms it would accept the options, and nothing is printed.</p>
+      <p class="snippet"><code>Validate-Job → successful-ok</code></p>
+    </article>
+
+    <article class="cell">
+      <h3>No spooler to babysit</h3>
+      <p>When the printer is unreachable, jobs retry with backoff. When it is busy with someone else's job, they wait it out. Real rejections show the printer's own status and message, not a generic failure.</p>
+      <ul class="ops">
+        <li>Shared and personal presets</li>
+        <li>Admin and user roles</li>
+        <li>Per-user job history</li>
+        <li>Print again</li>
+        <li>Preset import and export</li>
+      </ul>
+    </article>
+
+    <article class="cell cell-shot">
+      <img src="screenshot-jobs.png" width="1440" height="860" alt="The printmax Jobs page listing recent jobs, each with its printer, state and what the printer said about it" loading="lazy" decoding="async">
+    </article>
+  </section>
+
+  <section class="band" id="postscript">
+    <div class="shell">
+      <h2>Booklets, folds and staples the IPP attributes never mention</h2>
+      <p class="lede-2">Some finishing only exists as private PostScript in a vendor's driver. Upload the printer's PPD, switch it to <strong>PostScript via PPD</strong>, and printmax sends the job the way that driver does: Ghostscript output wrapped in the PPD's own PJL and setup snippets, in <code>*OrderDependency</code> order. It is opt-in per printer, and plain IPP stays the default.</p>
+      <div class="code-panel wide">
+        <pre><code><span class="c">% from the Toshiba e-STUDIO PPD, emitted into the job's setup block</span>
+<span class="pr">*Folding</span> True/On: <span class="s">"&lt;&lt;/TSBPrivate (DSSC PRINT FOLD=CENTER) &gt;&gt; setpagedevice"</span>
+<span class="pr">*Stapling</span> SS/Saddle Stitch: <span class="s">"&lt;&lt;/TSBPrivate (DSSC PRINT STAPLING=1028) &gt;&gt; setpagedevice"</span>
+
+<span class="c">% in printmax they sit in the same flat option map as everything else</span>
+<span class="p">{</span> <span class="k">"ppd:Folding"</span>: <span class="s">"True"</span>, <span class="k">"ppd:Stapling"</span>: <span class="s">"SS"</span>, <span class="k">"copies"</span>: <span class="n">120</span> <span class="p">}</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="library-shot shell">
+    <img src="screenshot-library.png" width="2880" height="1120" alt="The printmax Library, with documents filed under Sunday, Kids and Office groups, each showing the preset it prints with" loading="lazy" decoding="async">
+  </section>
+
+  <section class="install shell" id="install">
+    <h2>Install</h2>
+    <div class="install-grid">
+      <div>
+        <pre class="install-code"><code>curl -O https://raw.githubusercontent.com/bevanjkay/printmax/main/docker-compose.yml
+docker compose up -d</code></pre>
+        <p>Open port 8080 and create the admin account with the setup token printed in the container log. Then add a printer by its IPP URI, usually <code>ipp://&lt;host&gt;/ipp/print</code>, or scan the network for one.</p>
+        <p>Every setting has a default. The <a href="https://github.com/bevanjkay/printmax#run">README</a> covers the rest: reverse proxies, printer certificates and network discovery.</p>
+      </div>
+      <div class="note">
+        <h3>Why there is no CUPS</h3>
+        <p>Modern network printers already speak IPP. Talking to them directly means the options you see are the printer's own, rejections arrive in its own words, and there is no second print system in a container to keep alive.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="shell footer-inner">
+    <p>Made by <a href="https://bevankay.me">Bevan Kay</a></p>
+    <nav>
+      <a href="https://github.com/bevanjkay/printmax/issues">Report an issue</a>
+      <a href="https://github.com/bevanjkay/printmax/pkgs/container/printmax">Container image</a>
+      <a href="https://github.com/bevanjkay/printmax">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  fetch("https://api.github.com/repos/bevanjkay/printmax/releases?per_page=5")
+    .then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (releases) {
+      var release = releases.find(function (r) { return !r.draft && !r.prerelease; });
+      if (release) document.getElementById("version").textContent = release.tag_name;
+    })
+    .catch(function () {});
+</script>
+</body>
+</html>

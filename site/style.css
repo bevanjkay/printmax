@@ -1,0 +1,287 @@
+/* printmax landing page.
+   The app's own tokens (neutral greys, one indigo accent), one radius scale (12px surfaces,
+   8px inline code), one theme per user preference. No build step: Pages serves site/ directly. */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f7f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f1f4;
+  --fg: #16171b;
+  --muted: #5c606c;
+  --border: #e3e4e9;
+  --accent: #5158c9;
+  --accent-soft: #ecedfb;
+
+  --code-bg: #15161a;
+  --code-fg: #e6e6eb;
+  --code-muted: #8f939e;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shell: 1120px;
+
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0f11;
+    --surface: #151619;
+    --surface-2: #1b1c20;
+    --fg: #ececf0;
+    --muted: #a3a7b1;
+    --border: #26282e;
+    --accent: #7c83e6;
+    --accent-soft: rgba(124, 131, 230, 0.12);
+    --code-bg: #111215;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { width: 100%; max-width: var(--shell); margin: 0 auto; padding-inline: 24px; }
+
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
+h1 { font-size: clamp(2.5rem, 5.2vw, 3.75rem); font-weight: 600; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 600; }
+h3 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+p { margin: 0 0 1rem; }
+a { color: inherit; }
+
+code { font-family: var(--mono); font-size: 0.875em; }
+:not(pre) > code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.38em;
+}
+
+/* Navigation: single line, 64px tall. */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 64px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.wordmark { display: inline-flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: -0.02em; text-decoration: none; }
+.wordmark img { border-radius: 6px; }
+.nav nav { display: flex; gap: 26px; }
+.nav nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav nav a:hover { color: var(--fg); }
+@media (max-width: 640px) { .nav nav a:not(:last-child) { display: none; } }
+
+/* Hero: asymmetric split, copy left, product right. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: 56px;
+  align-items: center;
+  padding-block: 88px 72px;
+}
+.lede { font-size: 1.1875rem; color: var(--muted); max-width: 34ch; margin-top: 1.1rem; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 1.75rem; }
+.button {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0.7rem 1.15rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s, background 0.18s;
+}
+.button:hover { border-color: color-mix(in srgb, var(--fg) 30%, transparent); }
+.button:active { transform: translateY(1px); }
+/* Primary is fg-on-bg inverted, so contrast holds in both themes without tuning the accent. */
+.button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.button.primary:hover { background: color-mix(in srgb, var(--fg) 86%, var(--bg)); }
+.meta { margin-top: 1.15rem; font-size: 0.8125rem; color: var(--muted); }
+
+.hero-shot img,
+.cell-shot img,
+.library-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px -28px rgba(24, 24, 27, 0.45);
+}
+
+/* Presets: split with a code panel. */
+.presets {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: center;
+  padding-block: 72px;
+  border-top: 1px solid var(--border);
+}
+.presets p { color: var(--muted); max-width: 46ch; }
+.presets h2 { margin-bottom: 1.1rem; }
+
+.code-panel {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.code-panel pre { margin: 0; padding: 22px 24px; overflow-x: auto; }
+.code-panel code { color: var(--code-fg); font-size: 0.8125rem; line-height: 1.75; }
+.code-panel .k { color: #9cd0ff; }
+.code-panel .s { color: #b6e3a1; }
+.code-panel .n { color: #f0c674; }
+.code-panel .p { color: var(--code-muted); }
+.code-panel .c { color: var(--code-muted); }
+.code-panel .pr { color: #b4b8f5; }
+
+/* Bento: 12-col grid, 7/5 then 5/7 for rhythm. Four items, four cells. */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
+  padding-block: 72px;
+  border-top: 1px solid var(--border);
+}
+.cell {
+  grid-column: span 6;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 26px;
+}
+.cell p { color: var(--muted); font-size: 0.9375rem; margin: 0.6rem 0 0; }
+.cell-wide { grid-column: span 7; }
+.cell-accent { grid-column: span 5; background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 26%, transparent); }
+.cell-accent h3 { color: var(--accent); }
+.cell:nth-of-type(3) { grid-column: span 5; }
+.cell-shot { grid-column: span 7; padding: 0; overflow: hidden; background: var(--surface-2); display: flex; align-items: flex-end; }
+.cell-shot img { border: 0; border-radius: 0; box-shadow: none; }
+
+.groups {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+.group-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.group-row em { font-style: normal; color: var(--accent); }
+.snippet { margin-top: 1rem !important; }
+
+/* PostScript mode: full-width band, different family from every section above. */
+.band { padding-block: 72px; border-top: 1px solid var(--border); background: var(--surface); }
+.band h2 { margin-bottom: 1rem; max-width: 24ch; }
+.lede-2 { color: var(--muted); max-width: 60ch; margin-bottom: 1.75rem; }
+.lede-2 strong { color: var(--fg); font-weight: 600; }
+
+.library-shot { padding-block: 72px 0; }
+.library-shot img { box-shadow: 0 24px 60px -32px rgba(16, 17, 20, 0.4); }
+.code-panel.wide pre { padding: 26px 28px; }
+
+/* Install */
+.install { padding-block: 72px; }
+.install a { color: var(--accent); }
+.install h2 { margin-bottom: 1.5rem; }
+.install-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.install-code {
+  margin: 0 0 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  overflow-x: auto;
+}
+.install-code code { font-size: 0.8125rem; line-height: 1.7; }
+.install p { color: var(--muted); font-size: 0.9375rem; }
+.note { border-left: 2px solid var(--border); padding-left: 22px; }
+.note h3 { margin-bottom: 0.5rem; }
+
+footer { border-top: 1px solid var(--border); padding-block: 28px; }
+.footer-inner { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; font-size: 0.875rem; color: var(--muted); }
+.footer-inner p { margin: 0; }
+.footer-inner nav { display: flex; gap: 22px; }
+.footer-inner a { color: var(--muted); text-decoration: none; }
+.footer-inner a:hover { color: var(--fg); }
+
+a:focus-visible, .button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Scroll reveal, native scroll-driven animation only. No scroll listeners.
+   Communicates section boundaries as you move down the page. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .hero-copy, .hero-shot, .presets > *, .cell, .band .shell, .library-shot img, .install-grid > * {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 900px) {
+  .hero, .presets, .install-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .hero { padding-block: 56px 48px; }
+  .cell, .cell-wide, .cell-accent, .cell-shot, .cell:nth-of-type(3) { grid-column: 1 / -1; }
+  .bento { grid-template-columns: 1fr; }
+  .note { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 22px; }
+  .lede { max-width: none; }
+}
+
+.ops {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+}
+.ops li {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  background: var(--surface-2);
+}
