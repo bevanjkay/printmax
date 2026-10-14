@@ -12,11 +12,7 @@
   --muted: #5c606c;
   --border: #e3e4e9;
   --accent: #5158c9;
-  --accent-soft: #ecedfb;
 
-  --code-bg: #15161a;
-  --code-fg: #e6e6eb;
-  --code-muted: #8f939e;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -35,14 +31,13 @@
     --muted: #a3a7b1;
     --border: #26282e;
     --accent: #7c83e6;
-    --accent-soft: rgba(124, 131, 230, 0.12);
-    --code-bg: #111215;
   }
 }
 
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
+[id] { scroll-margin-top: 64px; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 body {
@@ -57,12 +52,13 @@ body {
 
 .shell { width: 100%; max-width: var(--shell); margin: 0 auto; padding-inline: 24px; }
 
-h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
-h1 { font-size: clamp(2.5rem, 5.2vw, 3.75rem); font-weight: 600; }
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.08; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 600; letter-spacing: -0.03em; line-height: 1.02; }
 h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); font-weight: 600; }
 h3 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
-p { margin: 0 0 1rem; }
-a { color: inherit; }
+p { margin: 0 0 1rem; text-wrap: pretty; }
+a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+::selection { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 
 code { font-family: var(--mono); font-size: 0.875em; }
 :not(pre) > code {
@@ -87,23 +83,27 @@ code { font-family: var(--mono); font-size: 0.875em; }
 .wordmark img { border-radius: 6px; }
 .nav nav { display: flex; gap: 26px; }
 .nav nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--muted);
   text-decoration: none;
   font-size: 0.9375rem;
   transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .nav nav a:hover { color: var(--fg); }
-@media (max-width: 640px) { .nav nav a:not(:last-child) { display: none; } }
+@media (max-width: 640px) { .nav .nav-wide { display: none; } }
 
-/* Hero: asymmetric split, copy left, product right. */
+/* Hero: headline and pitch side by side, then the product at full width, large enough to read. */
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 56px;
-  align-items: center;
-  padding-block: 88px 72px;
+  align-items: end;
+  padding-block: 96px 56px;
 }
-.lede { font-size: 1.1875rem; color: var(--muted); max-width: 34ch; margin-top: 1.1rem; }
+.hero h1 { white-space: nowrap; }
+.lede { font-size: 1.1875rem; color: var(--muted); max-width: 38ch; margin: 0; }
 .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 1.75rem; }
 .button {
   display: inline-flex;
@@ -126,132 +126,120 @@ code { font-family: var(--mono); font-size: 0.875em; }
 .button.primary:hover { background: color-mix(in srgb, var(--fg) 86%, var(--bg)); }
 .meta { margin-top: 1.15rem; font-size: 0.8125rem; color: var(--muted); }
 
-.hero-shot img,
-.cell-shot img,
-.library-shot img {
-  display: block;
-  width: 100%;
-  height: auto;
+picture img { display: block; width: 100%; height: auto; }
+
+.hero-shot { padding-bottom: 88px; }
+.hero-shot img {
   border-radius: var(--radius);
-  border: 1px solid var(--border);
-  box-shadow: 0 24px 60px -28px rgba(24, 24, 27, 0.45);
+  box-shadow: 0 0 0 1px var(--border), 0 32px 80px -36px rgba(16, 17, 20, 0.5);
 }
 
-/* Presets: split with a code panel. */
-.presets {
+/* Features: heading and copy side by side, then the screenshot at full width, like the hero. */
+.feature { padding-block: 88px 0; border-top: 1px solid var(--border); }
+.feature-copy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 56px;
-  align-items: center;
-  padding-block: 72px;
-  border-top: 1px solid var(--border);
+  margin-bottom: 40px;
 }
-.presets p { color: var(--muted); max-width: 46ch; }
-.presets h2 { margin-bottom: 1.1rem; }
-
-.code-panel {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
+.feature-copy h2 { max-width: 16ch; }
+.feature-copy p { color: var(--muted); font-size: 1.0625rem; max-width: 52ch; }
+.points { list-style: none; margin: 1.25rem 0 0; padding: 0; display: grid; gap: 10px; }
+.points li { position: relative; padding-left: 26px; font-size: 0.9375rem; max-width: 52ch; }
+/* A drawn tick, in the accent, so the list reads as things you get. */
+.points li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.42em;
+  width: 11px;
+  height: 6px;
+  border-left: 1.75px solid var(--accent);
+  border-bottom: 1.75px solid var(--accent);
+  transform: rotate(-45deg);
+}
+.shot img {
   border-radius: var(--radius);
-  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border), 0 32px 80px -40px rgba(16, 17, 20, 0.45);
 }
-.code-panel pre { margin: 0; padding: 22px 24px; overflow-x: auto; }
-.code-panel code { color: var(--code-fg); font-size: 0.8125rem; line-height: 1.75; }
-.code-panel .k { color: #9cd0ff; }
-.code-panel .s { color: #b6e3a1; }
-.code-panel .n { color: #f0c674; }
-.code-panel .p { color: var(--code-muted); }
-.code-panel .c { color: var(--code-muted); }
-.code-panel .pr { color: #b4b8f5; }
 
-/* Bento: 12-col grid, 7/5 then 5/7 for rhythm. Four items, four cells. */
-.bento {
+/* Presets: copy left, the phone layout right, so the page shows it works on a phone. */
+.feature-split {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 20px;
-  padding-block: 72px;
-  border-top: 1px solid var(--border);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 390px);
+  gap: 72px;
+  align-items: center;
+  padding-bottom: 88px;
 }
-.cell {
-  grid-column: span 6;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 26px;
-}
-.cell p { color: var(--muted); font-size: 0.9375rem; margin: 0.6rem 0 0; }
-.cell-wide { grid-column: span 7; }
-.cell-accent { grid-column: span 5; background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 26%, transparent); }
-.cell-accent h3 { color: var(--accent); }
-.cell:nth-of-type(3) { grid-column: span 5; }
-.cell-shot { grid-column: span 7; padding: 0; overflow: hidden; background: var(--surface-2); display: flex; align-items: flex-end; }
-.cell-shot img { border: 0; border-radius: 0; box-shadow: none; }
+.feature-split .feature-copy { display: block; margin: 0; }
+.feature-split h2 { margin-bottom: 1.1rem; }
+.shot-phone { justify-self: end; width: 100%; }
+.shot-phone img { border-radius: 22px; }
 
-.groups {
-  margin-top: 18px;
-  border-top: 1px solid var(--border);
-  font-family: var(--mono);
-  font-size: 0.8125rem;
-}
-.group-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.group-row em { font-style: normal; color: var(--accent); }
-.snippet { margin-top: 1rem !important; }
-
-/* PostScript mode: full-width band, different family from every section above. */
-.band { padding-block: 72px; border-top: 1px solid var(--border); background: var(--surface); }
-.band h2 { margin-bottom: 1rem; max-width: 24ch; }
-.lede-2 { color: var(--muted); max-width: 60ch; margin-bottom: 1.75rem; }
-.lede-2 strong { color: var(--fg); font-weight: 600; }
-
-.library-shot { padding-block: 72px 0; }
-.library-shot img { box-shadow: 0 24px 60px -32px rgba(16, 17, 20, 0.4); }
-.code-panel.wide pre { padding: 26px 28px; }
+/* Smaller features: a plain three-column list, separated by rules rather than boxed. */
+.more { padding-block: 72px; border-top: 1px solid var(--border); }
+.more h2 { margin-bottom: 2rem; }
+.more-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 40px; margin: 0; }
+.more-grid div { padding-block: 22px; border-top: 1px solid var(--border); }
+.more-grid dt { font-weight: 600; letter-spacing: -0.01em; }
+.more-grid dd { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9375rem; }
 
 /* Install */
-.install { padding-block: 72px; }
+.install { padding-block: 72px; border-top: 1px solid var(--border); }
 .install a { color: var(--accent); }
 .install h2 { margin-bottom: 1.5rem; }
 .install-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 40px; align-items: start; }
 .install-code {
-  margin: 0 0 1rem;
+  position: relative;
+  margin: 0 0 1.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px 18px;
-  overflow-x: auto;
 }
+/* Wraps rather than scrolls, so the whole command is visible before it is copied. */
+.install-code pre { margin: 0; padding: 16px 92px 16px 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .install-code code { font-size: 0.8125rem; line-height: 1.7; }
+.copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--fg);
+  font: 500 0.8125rem var(--sans);
+  cursor: pointer;
+  transition: border-color 0.18s;
+}
+.copy:hover { border-color: color-mix(in srgb, var(--fg) 30%, transparent); }
 .install p { color: var(--muted); font-size: 0.9375rem; }
 .note { border-left: 2px solid var(--border); padding-left: 22px; }
 .note h3 { margin-bottom: 0.5rem; }
 
-footer { border-top: 1px solid var(--border); padding-block: 28px; }
-.footer-inner { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; font-size: 0.875rem; color: var(--muted); }
+footer { border-top: 1px solid var(--border); padding-block: 16px; }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 0 20px; flex-wrap: wrap; font-size: 0.875rem; color: var(--muted); }
 .footer-inner p { margin: 0; }
 .footer-inner nav { display: flex; gap: 22px; }
-.footer-inner a { color: var(--muted); text-decoration: none; }
+.footer-inner a { display: inline-block; padding-block: 12px; color: var(--muted); text-decoration: none; }
+.footer-inner p a { color: inherit; }
 .footer-inner a:hover { color: var(--fg); }
 
-a:focus-visible, .button:focus-visible {
+a:focus-visible, .button:focus-visible, .copy:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
 
-/* Scroll reveal, native scroll-driven animation only. No scroll listeners.
-   Communicates section boundaries as you move down the page. */
+/* Scroll reveal, native scroll-driven animation only, and only for the feature screenshots:
+   copy is never hidden, and the hero shot may already be half in view on load. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
-    .hero-copy, .hero-shot, .presets > *, .cell, .band .shell, .library-shot img, .install-grid > * {
+    .feature .shot {
       animation: rise linear both;
       animation-timeline: view();
-      animation-range: entry 0% entry 55%;
+      animation-range: entry 0% entry 45%;
     }
   }
 }
@@ -261,27 +249,22 @@ a:focus-visible, .button:focus-visible {
 }
 
 @media (max-width: 900px) {
-  .hero, .presets, .install-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-  .hero { padding-block: 56px 48px; }
-  .cell, .cell-wide, .cell-accent, .cell-shot, .cell:nth-of-type(3) { grid-column: 1 / -1; }
-  .bento { grid-template-columns: 1fr; }
+  .hero, .install-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .hero { padding-block: 56px 36px; }
+  .hero-shot { padding-bottom: 56px; }
+  .feature-copy, .feature-split { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .feature-split { gap: 40px; }
+  .shot-phone { justify-self: center; max-width: 390px; }
+  .more-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feature { padding-top: 64px; }
   .note { border-left: 0; padding-left: 0; border-top: 1px solid var(--border); padding-top: 22px; }
   .lede { max-width: none; }
 }
 
-.ops {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0 0;
-  padding: 0;
-}
-.ops li {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 5px 10px;
-  background: var(--surface-2);
+@media (max-width: 640px) {
+  .more-grid { grid-template-columns: minmax(0, 1fr); }
+  .install-code pre { padding-right: 18px; }
+  .copy { position: static; display: block; margin: 0 8px 8px auto; }
+  .shot-phone { display: none; }
+  .feature-split { padding-bottom: 64px; }
 }
