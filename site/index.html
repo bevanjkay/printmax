@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>printmax - a self-hosted print page that talks IPP</title>
-<meta name="description" content="printmax is a self-hosted web app for the office or homelab: upload a PDF, pick a printer and a preset, print. It speaks IPP straight to the printer, so there is no CUPS to run.">
+<meta name="description" content="printmax is a shared print page for your office: upload a file, pick a preset and print from any computer or phone, keep the documents you print every week, and print any job again in one click.">
 <meta property="og:title" content="printmax">
-<meta property="og:description" content="Upload, pick a preset, print. A self-hosted print page that talks IPP straight to your printers.">
-<meta property="og:image" content="https://bevanjkay.github.io/printmax/screenshot-print.png">
-<meta name="twitter:image" content="https://bevanjkay.github.io/printmax/screenshot-print.png">
+<meta property="og:description" content="Upload, pick a preset, print. A shared print page for your office, with a library of everyday documents and one-click reprints.">
+<meta property="og:image" content="https://bevanjkay.github.io/printmax/screenshot-print-light.png">
+<meta name="twitter:image" content="https://bevanjkay.github.io/printmax/screenshot-print-light.png">
 <meta property="og:url" content="https://bevanjkay.github.io/printmax/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
@@ -23,8 +23,9 @@
   <div class="shell nav-inner">
     <a class="wordmark" href="/printmax/"><img src="favicon.svg" width="22" height="22" alt="">printmax</a>
     <nav>
-      <a href="#presets">Presets</a>
-      <a href="#postscript">Booklets</a>
+      <a class="nav-wide" href="#library">Library</a>
+      <a class="nav-wide" href="#print-again">Print again</a>
+      <a class="nav-wide" href="#presets">Presets</a>
       <a href="#install">Install</a>
       <a href="https://github.com/bevanjkay/printmax">GitHub</a>
     </nav>
@@ -34,106 +35,109 @@
 <main>
 
   <section class="hero shell">
+    <h1>Upload,<br> pick a preset,<br> print.</h1>
     <div class="hero-copy">
-      <h1>Upload, pick a preset, print.</h1>
-      <p class="lede">A self-hosted print page for the office or homelab. It speaks IPP straight to your printers, so there is no CUPS to run or babysit.</p>
+      <p class="lede">A shared print page for your office. Upload a file, pick a preset and print from any computer or phone on the network, with no printer drivers to install.</p>
       <div class="cta">
         <a class="button primary" href="#install">Run it with Docker</a>
         <a class="button" href="https://github.com/bevanjkay/printmax">View on GitHub</a>
       </div>
-      <p class="meta"><span id="version">Latest image</span> on GHCR · amd64 and arm64 · PDF, PNG and JPEG</p>
-    </div>
-    <div class="hero-shot">
-      <img src="screenshot-print.png" width="2240" height="1440" alt="The printmax Print page: a PDF loaded, the Front office printer marked Ready, and shared presets such as Sunday bulletin and Envelopes to choose from" fetchpriority="high" decoding="async">
+      <p class="meta">Runs in Docker on your own server · PDF, PNG and JPEG</p>
     </div>
   </section>
 
-  <section class="presets shell" id="presets">
-    <div class="presets-copy">
-      <h2>The printer writes the form</h2>
-      <p>printmax asks each printer for its <code>Get-Printer-Attributes</code> and builds the option editor from the answer. Paper sizes, trays, duplex and finishing are the ones that device actually has, and every job is validated against them before it is sent.</p>
-      <p>Capabilities are fetched again each day and diffed, so a changed tray or a dropped option is flagged instead of quietly breaking a preset.</p>
-    </div>
-    <div class="code-panel">
-      <pre><code><span class="p">{</span>
-  <span class="k">"name"</span>: <span class="s">"Sunday bulletin"</span>,
-  <span class="k">"description"</span>: <span class="s">"A4, double-sided on the long edge"</span>,
-  <span class="k">"scope"</span>: <span class="s">"global"</span>,
-  <span class="k">"options"</span>: <span class="p">{</span>
-    <span class="k">"media"</span>: <span class="s">"iso_a4_210x297mm"</span>,
-    <span class="k">"sides"</span>: <span class="s">"two-sided-long-edge"</span>,
-    <span class="k">"print-color-mode"</span>: <span class="s">"monochrome"</span>,
-    <span class="k">"copies"</span>: <span class="n">40</span>
-  <span class="p">}</span>
-<span class="p">}</span></code></pre>
-    </div>
-  </section>
+  <div class="hero-shot shell">
+    <picture>
+      <source srcset="screenshot-print-narrow-dark.png" width="780" height="985" media="(max-width: 640px) and (prefers-color-scheme: dark)">
+      <source srcset="screenshot-print-narrow-light.png" width="780" height="985" media="(max-width: 640px)">
+      <source srcset="screenshot-print-dark.png" width="2560" height="1510" media="(prefers-color-scheme: dark)">
+      <img src="screenshot-print-light.png" width="2560" height="1510" alt="The printmax Print page: Monthly report - Sept.pdf loaded for the Reception copier, the Monthly report preset chosen, and a summary reading Will print 1 copy, double-sided, long edge, black and white, A4" fetchpriority="high" decoding="async">
+    </picture>
+  </div>
 
-  <section class="bento shell">
-    <article class="cell cell-wide">
-      <h3>A library for the things you print every week</h3>
-      <p>Keep the bulletin, the welcome card and the giving envelope on the server, each paired with its preset. Printing one again is a click and a copies count. Improve the preset and every document that uses it follows.</p>
-      <div class="groups">
-        <div class="group-row">Sunday<em>3 documents</em></div>
-        <div class="group-row">Kids<em>1 document</em></div>
-        <div class="group-row">Office<em>1 document</em></div>
+  <section class="feature shell" id="library">
+    <div class="feature-copy">
+      <h2>Keep the documents you print every week</h2>
+      <div>
+        <p>Save a document once, together with how it prints. After that, anyone in the office can print the timesheet, the price list or the fax cover with one click and a copies count.</p>
+        <ul class="points">
+          <li>File documents into groups like Forms, Sales and Reception, and search across them</li>
+          <li>Share a document with everyone, or keep it to yourself</li>
+          <li>Change a preset and every document that uses it follows</li>
+        </ul>
       </div>
-    </article>
+    </div>
+    <picture class="shot">
+      <source srcset="screenshot-library-narrow-dark.png" width="706" height="410" media="(max-width: 640px) and (prefers-color-scheme: dark)">
+      <source srcset="screenshot-library-narrow-light.png" width="706" height="410" media="(max-width: 640px)">
+      <source srcset="screenshot-library-dark.png" width="2080" height="672" media="(prefers-color-scheme: dark)">
+      <img src="screenshot-library-light.png" width="2080" height="672" alt="The printmax Library, with the Forms group open showing Fax cover, Leave request and Timesheet, each with the preset it prints with and a Print button, and Sales and Reception groups collapsed below" loading="lazy" decoding="async">
+    </picture>
+  </section>
 
-    <article class="cell cell-accent">
-      <h3>Ask the printer first</h3>
-      <p>Check a preset with an IPP Validate-Job. The device itself confirms it would accept the options, and nothing is printed.</p>
-      <p class="snippet"><code>Validate-Job → successful-ok</code></p>
-    </article>
+  <section class="feature shell" id="print-again">
+    <div class="feature-copy">
+      <h2>Print it again, exactly as before</h2>
+      <div>
+        <p>Every job is kept in the history with the settings it printed with. Print again sends it straight back to the printer, and you can change the copies on the way: print one to check, then the full run.</p>
+        <ul class="points">
+          <li>Save to Library keeps a one-off job for good</li>
+          <li>Files stay for a week by default, so last week's handout is still there</li>
+          <li>If the printer is busy or off, the job waits and tries again instead of failing</li>
+        </ul>
+      </div>
+    </div>
+    <picture class="shot">
+      <source srcset="screenshot-jobs-narrow-dark.png" width="706" height="920" media="(max-width: 640px) and (prefers-color-scheme: dark)">
+      <source srcset="screenshot-jobs-narrow-light.png" width="706" height="920" media="(max-width: 640px)">
+      <source srcset="screenshot-reprint-dark.png" width="2080" height="692" media="(prefers-color-scheme: dark)">
+      <img src="screenshot-reprint-light.png" width="2080" height="692" alt="Recent jobs in printmax, each with Print again and Save to Library buttons: Envelope DL.pdf retrying while the printer finishes another job, Price list 2026.pdf printed and Letterhead.pdf printing" loading="lazy" decoding="async">
+    </picture>
+  </section>
 
-    <article class="cell">
-      <h3>No spooler to babysit</h3>
-      <p>When the printer is unreachable, jobs retry with backoff. When it is busy with someone else's job, they wait it out. Real rejections show the printer's own status and message, not a generic failure.</p>
-      <ul class="ops">
-        <li>Shared and personal presets</li>
-        <li>Admin and user roles</li>
-        <li>Per-user job history</li>
-        <li>Print again</li>
-        <li>Preset import and export</li>
+  <section class="feature feature-split shell" id="presets">
+    <div class="feature-copy">
+      <h2>Pick a preset and know what will come out</h2>
+      <p>An admin sets up presets like Monthly report: A4, double-sided, black and white. Everyone else just picks one, and before they press Print a line spells out exactly what they will get.</p>
+      <ul class="points">
+        <li>Only the options your printer actually has, read from the printer itself</li>
+        <li>Shared presets for the office, personal ones for you</li>
+        <li>Works the same from a phone</li>
       </ul>
-    </article>
-
-    <article class="cell cell-shot">
-      <img src="screenshot-jobs.png" width="1440" height="860" alt="The printmax Jobs page listing recent jobs, each with its printer, state and what the printer said about it" loading="lazy" decoding="async">
-    </article>
-  </section>
-
-  <section class="band" id="postscript">
-    <div class="shell">
-      <h2>Booklets, folds and staples the IPP attributes never mention</h2>
-      <p class="lede-2">Some finishing only exists as private PostScript in a vendor's driver. Upload the printer's PPD, switch it to <strong>PostScript via PPD</strong>, and printmax sends the job the way that driver does: Ghostscript output wrapped in the PPD's own PJL and setup snippets, in <code>*OrderDependency</code> order. It is opt-in per printer, and plain IPP stays the default.</p>
-      <div class="code-panel wide">
-        <pre><code><span class="c">% from the Toshiba e-STUDIO PPD, emitted into the job's setup block</span>
-<span class="pr">*Folding</span> True/On: <span class="s">"&lt;&lt;/TSBPrivate (DSSC PRINT FOLD=CENTER) &gt;&gt; setpagedevice"</span>
-<span class="pr">*Stapling</span> SS/Saddle Stitch: <span class="s">"&lt;&lt;/TSBPrivate (DSSC PRINT STAPLING=1028) &gt;&gt; setpagedevice"</span>
-
-<span class="c">% in printmax they sit in the same flat option map as everything else</span>
-<span class="p">{</span> <span class="k">"ppd:Folding"</span>: <span class="s">"True"</span>, <span class="k">"ppd:Stapling"</span>: <span class="s">"SS"</span>, <span class="k">"copies"</span>: <span class="n">120</span> <span class="p">}</span></code></pre>
-      </div>
     </div>
+    <picture class="shot shot-phone">
+      <source srcset="screenshot-print-narrow-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="screenshot-print-narrow-light.png" width="780" height="985" alt="printmax on a phone: the Monthly report preset chosen from a list of presets, a summary reading Will print 1 copy, double-sided, long edge, black and white, A4, and the Print button" loading="lazy" decoding="async">
+    </picture>
   </section>
 
-  <section class="library-shot shell">
-    <img src="screenshot-library.png" width="2880" height="1120" alt="The printmax Library, with documents filed under Sunday, Kids and Office groups, each showing the preset it prints with" loading="lazy" decoding="async">
+  <section class="more shell">
+    <h2>Also included</h2>
+    <dl class="more-grid">
+      <div><dt>Checked before it prints</dt><dd>Ask the printer whether it would accept a preset, without printing a page.</dd></div>
+      <div><dt>Accounts for everyone</dt><dd>Admin and user accounts, with each person's own job history.</dd></div>
+      <div><dt>Booklets and stapling</dt><dd>Copiers that only fold, staple or make booklets through their own driver can still do it here.</dd></div>
+      <div><dt>Warns when a printer changes</dt><dd>If a printer drops a tray or an option, the presets that relied on it are flagged.</dd></div>
+      <div><dt>Presets you can move</dt><dd>Export a printer's presets to a file and import them on another server.</dd></div>
+      <div><dt>No print server to look after</dt><dd>It talks to network printers directly, so there is no CUPS to install or keep running.</dd></div>
+    </dl>
   </section>
 
   <section class="install shell" id="install">
     <h2>Install</h2>
+    <div class="install-code">
+      <pre><code id="install-command">curl -O https://raw.githubusercontent.com/bevanjkay/printmax/main/docker-compose.yml
+docker compose up -d</code></pre>
+      <button class="copy" type="button" data-copy="install-command">Copy</button>
+    </div>
     <div class="install-grid">
       <div>
-        <pre class="install-code"><code>curl -O https://raw.githubusercontent.com/bevanjkay/printmax/main/docker-compose.yml
-docker compose up -d</code></pre>
-        <p>Open port 8080 and create the admin account with the setup token printed in the container log. Then add a printer by its IPP URI, usually <code>ipp://&lt;host&gt;/ipp/print</code>, or scan the network for one.</p>
+        <p>Open port 8080 and create the admin account with the setup token printed in the container log. Then add a printer by its IPP URI, usually <code>ipp://&lt;host&gt;/ipp/print</code>, or scan the network for one (inside Docker, scanning needs host networking).</p>
         <p>Every setting has a default. The <a href="https://github.com/bevanjkay/printmax#run">README</a> covers the rest: reverse proxies, printer certificates and network discovery.</p>
       </div>
       <div class="note">
-        <h3>Why there is no CUPS</h3>
-        <p>Modern network printers already speak IPP. Talking to them directly means the options you see are the printer's own, rejections arrive in its own words, and there is no second print system in a container to keep alive.</p>
+        <h3>What you need</h3>
+        <p>A machine that is always on and runs Docker (a small server or NAS is plenty), and a network printer that speaks IPP and accepts PDF. Most office printers and copiers do.</p>
       </div>
     </div>
   </section>
@@ -152,13 +156,17 @@ docker compose up -d</code></pre>
 </footer>
 
 <script>
-  fetch("https://api.github.com/repos/bevanjkay/printmax/releases?per_page=5")
-    .then(function (r) { return r.ok ? r.json() : []; })
-    .then(function (releases) {
-      var release = releases.find(function (r) { return !r.draft && !r.prerelease; });
-      if (release) document.getElementById("version").textContent = release.tag_name;
-    })
-    .catch(function () {});
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    var source = document.getElementById(button.dataset.copy);
+    button.addEventListener("click", function () {
+      navigator.clipboard.writeText(source.textContent).then(function () {
+        button.textContent = "Copied";
+        setTimeout(function () { button.textContent = "Copy"; }, 2000);
+      }, function () {
+        getSelection().selectAllChildren(source);
+      });
+    });
+  });
 </script>
 </body>
 </html>
