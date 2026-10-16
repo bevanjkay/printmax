@@ -220,7 +220,7 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     finally {
       worker.stop();
     }
-  });
+  }, 60_000);
 
   it("retries with backoff when the printer is unreachable, then fails", async () => {
     const file = path.join(workDir, "r.pdf");

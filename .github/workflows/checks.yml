@@ -7,8 +7,10 @@ on:
     branches: [main]
   workflow_call:
 
+# Docker Build calls this workflow too, and a called workflow takes its caller's name, so the name
+# keeps that run from cancelling or queueing behind this one.
 concurrency:
-  group: "checks-${{ github.ref }}"
+  group: "checks-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
