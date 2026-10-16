@@ -49,6 +49,8 @@ export interface JobRow {
 /** Local states before/around the IPP job states. */
 export const LocalJobState = {
   queued: "queued",
+  /** Never stored: reported in place of queued or retrying while Ghostscript works on the document. */
+  converting: "converting",
   retrying: "retrying",
   failed: "failed",
   unknown: "unknown",
@@ -57,7 +59,7 @@ export const LocalJobState = {
 const LOCAL_TERMINAL = new Set<string>([LocalJobState.failed, LocalJobState.unknown, ...TERMINAL_JOB_STATES]);
 export const MAX_SUBMIT_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 2000;
-const conversions = new WeakMap<Db, Map<number, AbortController>>();
+const conversions = new WeakMap<Db, Map<number, { controller: AbortController; converting: boolean }>>();
 
 /** IPP statuses that mean "not right now" rather than "never": busy with another job, temporary error, paused intake. */
 const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([0x0502, 0x0505, 0x0506, 0x0507]);
@@ -189,14 +191,18 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
     return fail(db, job, problems.join("; "));
 
   const userName = requestingUserName(db, job);
+  const ppd = profile.mode === "postscript" ? profile.ppd : null;
+  const grayscale = job.document_format === "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false);
   const controller = new AbortController();
+  const conversion = { controller, converting: Boolean(ppd) || grayscale };
   if (!conversions.has(db))
     conversions.set(db, new Map());
-  conversions.get(db)!.set(job.id, controller);
+  conversions.get(db)!.set(job.id, conversion);
   try {
-    const { data, documentFormat, jobAttributes } = profile.mode === "postscript" && profile.ppd
-      ? await postScriptDocument(job, profile.ppd, options, profile.optionDefaults, caps, userName, controller.signal, limits)
-      : await ippDocument(job, options, profile.optionDefaults, caps, controller.signal);
+    const { data, documentFormat, jobAttributes } = ppd
+      ? await postScriptDocument(job, ppd, options, profile.optionDefaults, caps, userName, controller.signal, limits)
+      : await ippDocument(job, options, grayscale, caps, controller.signal);
+    conversion.converting = false;
     if (controller.signal.aborted)
       return;
     const status = await printJob(targetFor(printer), {
@@ -240,8 +246,7 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
 }
 
 /** The upload as it came, or in greyscale when the job asks for black and white. */
-async function ippDocument(job: JobRow, options: Record<string, unknown>, defaults: Record<string, unknown>, caps: IppAttributes, signal: AbortSignal) {
-  const grayscale = job.document_format === "application/pdf" && toggleIsOn(options, defaults, BLACK_AND_WHITE, false);
+async function ippDocument(job: JobRow, options: Record<string, unknown>, grayscale: boolean, caps: IppAttributes, signal: AbortSignal) {
   const data = grayscale
     ? await pdfToGrayscalePdf(job.file_path!, { signal })
     : await readFile(job.file_path!);
@@ -365,7 +370,7 @@ export async function cancelJob(db: Db, id: number, user: UserRow): Promise<JobR
   }
   else {
     db.prepare("UPDATE jobs SET state = 'canceled', next_attempt_at = NULL, completed_at = ? WHERE id = ?").run(now(), id);
-    conversions.get(db)?.get(id)?.abort();
+    conversions.get(db)?.get(id)?.controller.abort();
   }
   return requireJob(db, id);
 }
@@ -441,7 +446,7 @@ export function startJobWorker(db: Db, opts: JobWorkerOptions): JobWorker {
     stop: () => {
       stopped = true;
       clearInterval(timer);
-      for (const controller of conversions.get(db)?.values() ?? [])
+      for (const { controller } of conversions.get(db)?.values() ?? [])
         controller.abort();
     },
   };
@@ -469,6 +474,12 @@ export async function sweepExpiredFiles(db: Db, retentionDays: number): Promise<
   return removed;
 }
 
+/** The stored state, or converting while Ghostscript works on a job that has yet to reach the printer. */
+function reportedState(db: Db, job: JobRow): string {
+  const waiting = job.state === LocalJobState.queued || job.state === LocalJobState.retrying;
+  return waiting && conversions.get(db)?.get(job.id)?.converting ? LocalJobState.converting : job.state;
+}
+
 export function toDto(db: Db, job: JobRow): JobDto {
   const printer = db.prepare("SELECT name FROM printers WHERE id = ?").get(job.printer_id) as { name: string } | undefined;
   const user = job.user_id === null ? undefined : db.prepare("SELECT name FROM users WHERE id = ?").get(job.user_id) as { name: string } | undefined;
@@ -486,7 +497,7 @@ export function toDto(db: Db, job: JobRow): JobDto {
     documentFormat: job.document_format,
     options: JSON.parse(job.options_final) as Record<string, unknown>,
     ippJobId: job.ipp_job_id,
-    state: job.state,
+    state: reportedState(db, job),
     stateReasons: JSON.parse(job.state_reasons) as string[],
     stateMessage: job.state_message,
     error: job.error,

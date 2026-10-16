@@ -250,4 +250,4 @@ export interface DiscoveredPrinter {
   secureUri: string | null;
 }
 
-export const ACTIVE_JOB_STATES = ["queued", "retrying", "pending", "pending-held", "processing", "processing-stopped"] as const;
+export const ACTIVE_JOB_STATES = ["queued", "converting", "retrying", "pending", "pending-held", "processing", "processing-stopped"] as const;

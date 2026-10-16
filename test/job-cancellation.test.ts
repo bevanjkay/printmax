@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
-import { cancelJob, createJob, requireJob, startJobWorker } from "../src/server/jobs.js";
+import { cancelJob, createJob, requireJob, startJobWorker, toDto } from "../src/server/jobs.js";
 import { pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
 vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), measurePdf: vi.fn().mockResolvedValue({ pages: 1, largest: { width: 842, height: 595 } }) }));
@@ -34,8 +34,11 @@ it("cancels an active conversion without printing it and continues to the next q
   try {
     pending = worker.tick();
     const signal = await started;
+    expect(toDto(db, requireJob(db, first.id)).state).toBe("converting");
     await cancelJob(db, first.id, user);
     expect(signal.aborted).toBe(true);
+    // The conversion has yet to wind down, but the job is cancelled all the same.
+    expect(toDto(db, requireJob(db, first.id)).state).toBe("canceled");
     await pending;
     expect(requireJob(db, first.id).state).toBe("canceled");
     expect(requireJob(db, second.id).state).toBe("completed");
