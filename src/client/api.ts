@@ -1,4 +1,4 @@
-import type { AuthState, CapsChangeDto, DiscoveredPrinter, DocumentSize, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, RemovalImpact, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
+import type { ApiTokenDto, AuthState, CapsChangeDto, CreatedApiTokenDto, DiscoveredPrinter, DocumentSize, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetExportItem, PresetImportResult, PrinterDto, PrintMode, ProbeResult, RemovalImpact, StoredJobDto, UserDto, ValidationResult } from "../shared/types.js";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -32,6 +32,9 @@ export const api = {
   login: (input: { email: string; password: string }) => request<UserDto>("/api/auth/login", json("POST", input)),
   logout: () => request<void>("/api/auth/logout", json("POST")),
   changePassword: (input: { currentPassword: string; newPassword: string }) => request<void>("/api/auth/password", json("POST", input)),
+  listTokens: () => request<ApiTokenDto[]>("/api/tokens"),
+  createToken: (name: string) => request<CreatedApiTokenDto>("/api/tokens", json("POST", { name })),
+  deleteToken: (id: number) => request<void>(`/api/tokens/${id}`, json("DELETE")),
 
   listPrinters: () => request<PrinterDto[]>("/api/printers"),
   getForm: (printerId: number) => request<FormField[]>(`/api/printers/${printerId}/form`),

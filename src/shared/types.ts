@@ -18,6 +18,18 @@ export interface RemovalImpact {
   jobs: number;
 }
 
+export interface ApiTokenDto {
+  id: number;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Only a hash is stored, so the secret is returned once, at creation. */
+export interface CreatedApiTokenDto extends ApiTokenDto {
+  secret: string;
+}
+
 export interface AuthState {
   user: UserDto | null;
   needsSetup: boolean;

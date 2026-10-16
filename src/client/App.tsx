@@ -32,7 +32,7 @@ const PAGES: PageDef[] = [
   { id: "library", label: "Library", title: "Library", description: "Documents kept for good, each with its preset, so printing them again is one click.", icon: <IconLibrary /> },
   { id: "printers", label: "Printers", title: "Printers", description: "Add printers and check what they can do.", icon: <IconSliders />, admin: true },
   { id: "users", label: "Users", title: "Users", description: "Who can sign in, and who can administer.", icon: <IconUsers />, admin: true },
-  { id: "account", label: "Account", title: "Account", description: "Your sign-in details.", icon: <IconUser /> },
+  { id: "account", label: "Account", title: "Account", description: "Your sign-in details and API tokens.", icon: <IconUser /> },
 ];
 
 /** Pages live in the URL hash, so Back, refresh and a bookmark keep the page; the server only ever serves `/`. */

@@ -78,8 +78,10 @@ or WebSockets.
 
 ### Security notes
 
-- Every printing, preset and printer route needs a signed-in session; sessions are random tokens
-  stored hashed, `HttpOnly`, `SameSite=Lax`, and `Secure` behind HTTPS.
+- Every printing, preset and printer route needs a signed-in session or an API token; sessions are
+  random tokens stored hashed, `HttpOnly`, `SameSite=Lax`, and `Secure` behind HTTPS.
+- API tokens are stored hashed and only accepted in an `Authorization: Bearer` header, which a
+  browser never sends on its own. Creating and revoking them needs a session, not a token.
 - Sign-in and setup are rate limited to 10 attempts per client IP per minute (from
   trusted `X-Forwarded-For` when `TRUST_PROXY` is configured).
 - The first-run setup page needs the token printed in the log at startup, so an instance exposed
@@ -188,6 +190,34 @@ editor suggests registered IANA/PWG values the printer did not report; use the s
 confirm a value before relying on it. A rejection is reliable; a pass is only as good as the
 device's own checking (the Toshiba e-STUDIO accepts any job attribute and only validates the
 document format).
+
+## API
+
+Everything the web app does goes through a JSON API under `/api`, and scripts and automations can
+use it too. Create a token under **Account → API tokens** and send it as a bearer token. A token
+acts as its owner, with the same access, until it is revoked; its secret is shown once.
+
+```sh
+TOKEN=pmx_...
+HOST=https://print.example.org
+
+# printers, and the presets you can use on one
+curl -H "Authorization: Bearer $TOKEN" $HOST/api/printers
+curl -H "Authorization: Bearer $TOKEN" "$HOST/api/presets?printerId=1"
+
+# print a file with a preset, overriding copies (options use the IPP attribute names)
+curl -H "Authorization: Bearer $TOKEN" -F printerId=1 -F presetId=3 \
+  -F 'options={"copies":2}' -F file=@quarterly-report.pdf $HOST/api/jobs
+
+# print a Library document, then follow the job it returns
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"copies":20}' $HOST/api/library/7/print
+curl -H "Authorization: Bearer $TOKEN" $HOST/api/jobs/42
+```
+
+Errors come back as `{ "error": "..." }` with a 4xx status. Options are checked against the
+printer's capabilities before a job is queued (a 422 lists what is wrong); if the printer itself
+refuses the job later, the job's `state` and `error` say so.
 
 ## Layout
 
