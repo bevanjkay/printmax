@@ -8,13 +8,14 @@ import fastifyMultipart from "@fastify/multipart";
 import fastifyRateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
-import { requireAdmin, requireUser, SESSION_COOKIE, sessionUser } from "./auth.js";
+import { apiTokenUser, bearerToken, requireAdmin, requireSession, requireUser, SESSION_COOKIE, sessionUser } from "./auth.js";
 import { HttpError } from "./errors.js";
 import { authRoutes } from "./routes/auth.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { libraryRoutes } from "./routes/library.js";
 import { presetRoutes } from "./routes/presets.js";
 import { adminPrinterRoutes, printerRoutes } from "./routes/printers.js";
+import { tokenRoutes } from "./routes/tokens.js";
 import { userRoutes } from "./routes/users.js";
 
 export interface AppOptions {
@@ -92,8 +93,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(500).send({ error: "internal error" });
   });
 
+  // A request that presents a token is judged on the token alone, never on a cookie it also carries.
   app.addHook("onRequest", async (req) => {
-    req.user = sessionUser(db, req.cookies[SESSION_COOKIE]);
+    const token = bearerToken(req.headers.authorization);
+    if (token === undefined) {
+      req.user = sessionUser(db, req.cookies[SESSION_COOKIE]);
+      return;
+    }
+    req.user = apiTokenUser(db, token);
+    if (!req.user)
+      throw new HttpError(401, "the API token is invalid or has been revoked");
+    req.viaToken = true;
   });
 
   app.get("/api/health", async () => ({ ok: true }));
@@ -107,6 +117,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const storedDir = opts.storedDir ?? path.join(path.dirname(opts.uploadDir), "stored");
     mkdirSync(storedDir, { recursive: true });
     libraryRoutes(scope, db, { storedDir, uploadDir: opts.uploadDir });
+  });
+
+  await app.register(async (scope) => {
+    scope.addHook("onRequest", requireSession);
+    tokenRoutes(scope, db);
   });
 
   await app.register(async (scope) => {

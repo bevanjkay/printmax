@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { RemovalImpact, UserDto } from "../shared/types.js";
+import type { ApiTokenDto, RemovalImpact, UserDto } from "../shared/types.js";
 import type { Db } from "./db.js";
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
@@ -15,7 +15,18 @@ export interface UserRow {
   created_at: string;
 }
 
+export interface ApiTokenRow {
+  id: number;
+  user_id: number;
+  name: string;
+  token_hash: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
 export const SESSION_COOKIE = "printmax_session";
+/** Marks a printmax secret for secret scanners and anyone reading a config file. */
+const API_TOKEN_PREFIX = "pmx_";
 const SESSION_DAYS = 30;
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 
@@ -139,6 +150,45 @@ export function purgeExpiredSessions(db: Db): void {
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now());
 }
 
+export function createApiToken(db: Db, userId: number, name: unknown): { row: ApiTokenRow; secret: string } {
+  if (typeof name !== "string" || name.trim() === "")
+    throw new HttpError(400, "name is required");
+  if (name.trim().length > 80)
+    throw new HttpError(400, "name must be 80 characters or fewer");
+  const secret = `${API_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
+  const result = db.prepare("INSERT INTO api_tokens (user_id, name, token_hash, created_at) VALUES (?, ?, ?, ?)")
+    .run(userId, name.trim(), tokenHash(secret), now());
+  const row = db.prepare("SELECT * FROM api_tokens WHERE id = ?").get(result.lastInsertRowid) as unknown as ApiTokenRow;
+  return { row, secret };
+}
+
+export function listApiTokens(db: Db, userId: number): ApiTokenRow[] {
+  return db.prepare("SELECT * FROM api_tokens WHERE user_id = ? ORDER BY id DESC").all(userId) as unknown as ApiTokenRow[];
+}
+
+export function deleteApiToken(db: Db, userId: number, id: number): void {
+  if (db.prepare("DELETE FROM api_tokens WHERE id = ? AND user_id = ?").run(id, userId).changes === 0)
+    throw notFound("token");
+}
+
+export function apiTokenUser(db: Db, secret: string): UserRow | undefined {
+  const token = db.prepare("SELECT id, user_id FROM api_tokens WHERE token_hash = ?").get(tokenHash(secret)) as { id: number; user_id: number } | undefined;
+  if (!token)
+    return undefined;
+  db.prepare("UPDATE api_tokens SET last_used_at = ? WHERE id = ?").run(now(), token.id);
+  return getUser(db, token.user_id);
+}
+
+/** The credential in an `Authorization: Bearer` header, malformed or not. Other schemes, such as a proxy's Basic auth, are not ours. */
+export function bearerToken(header: string | undefined): string | undefined {
+  const match = header?.match(/^Bearer(?:\s(.*))?$/i);
+  return match ? (match[1] ?? "").trim() : undefined;
+}
+
+export function toApiTokenDto(row: ApiTokenRow): ApiTokenDto {
+  return { id: row.id, name: row.name, createdAt: row.created_at, lastUsedAt: row.last_used_at };
+}
+
 export function login(db: Db, email: unknown, password: unknown): UserRow {
   if (typeof email !== "string" || typeof password !== "string")
     throw new HttpError(400, "email and password are required");
@@ -157,6 +207,8 @@ export function toUserDto(user: UserRow): UserDto {
 declare module "fastify" {
   interface FastifyRequest {
     user?: UserRow;
+    /** Signed in with an API token rather than a session cookie. */
+    viaToken?: boolean;
   }
 }
 
@@ -170,4 +222,12 @@ export async function requireAdmin(req: FastifyRequest, _reply: FastifyReply): P
     throw new HttpError(401, "sign in required");
   if (req.user.role !== "admin")
     throw new HttpError(403, "admin access required");
+}
+
+/** Credentials are managed from a session, so a leaked token cannot mint more tokens. */
+export async function requireSession(req: FastifyRequest, _reply: FastifyReply): Promise<void> {
+  if (!req.user)
+    throw new HttpError(401, "sign in required");
+  if (req.viaToken)
+    throw new HttpError(403, "API tokens are managed from the web app, not with a token");
 }

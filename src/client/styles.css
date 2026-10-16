@@ -371,6 +371,9 @@ details.disclosure + details.disclosure { margin-top: 4px; }
 .accordion > details > .accordion-body { padding: 2px 14px 14px; }
 .inline-form { display: flex; gap: 8px; align-items: center; }
 .inline-form .control { width: auto; }
+.token-secret { margin-top: 8px; }
+.token-secret .control { flex: 1; min-width: 0; }
+.notice .token-secret .btn { margin-top: 0; }
 .control.inline { width: auto; }
 .control.wide { min-width: 190px; }
 .control.printer-pick { min-width: 220px; }

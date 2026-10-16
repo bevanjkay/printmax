@@ -1,6 +1,6 @@
 import type { FastifyInstance, InjectOptions } from "fastify";
 import type { IppAttributes } from "../src/server/ipp/codec.js";
-import type { CapsChangeDto, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetImportResult, StoredJobDto, UserDto } from "../src/shared/types.js";
+import type { ApiTokenDto, CapsChangeDto, CreatedApiTokenDto, FormField, JobDto, LibraryGroupDto, PresetDto, PresetExport, PresetImportResult, StoredJobDto, UserDto } from "../src/shared/types.js";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -370,6 +370,53 @@ describe("aPI", () => {
       expect(gone.json().error).toMatch(/no longer on the server/);
     });
   });
+  describe("aPI tokens", () => {
+    const bearer = (secret: string, opts: InjectOptions): InjectOptions => ({ ...opts, headers: { ...(opts.headers ?? {}), authorization: `Bearer ${secret}` } });
+    let token: CreatedApiTokenDto;
+
+    it("shows a new token's secret once and accepts it in place of a session", async () => {
+      expect((await app.inject(as(userCookie, { method: "POST", url: "/api/tokens", payload: { name: " " } }))).statusCode).toBe(400);
+      const res = await app.inject(as(userCookie, { method: "POST", url: "/api/tokens", payload: { name: "Office automations" } }));
+      expect(res.statusCode, res.body).toBe(201);
+      token = res.json<CreatedApiTokenDto>();
+      expect(token).toMatchObject({ name: "Office automations", lastUsedAt: null });
+      expect(token.secret).toMatch(/^pmx_[\w-]{43}$/);
+
+      const me = await app.inject(bearer(token.secret, { method: "GET", url: "/api/auth/me" }));
+      expect(me.json().user.email).toBe("pat@example.org");
+      expect((await app.inject(bearer(token.secret, { method: "GET", url: "/api/printers" }))).statusCode).toBe(200);
+      expect((await app.inject(bearer(token.secret, { method: "GET", url: "/api/users" }))).statusCode).toBe(403);
+
+      const listed = (await app.inject(as(userCookie, { method: "GET", url: "/api/tokens" }))).json<ApiTokenDto[]>();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]).not.toHaveProperty("secret");
+      expect(listed[0]!.lastUsedAt).not.toBeNull();
+      expect((await app.inject(as(adminCookie, { method: "GET", url: "/api/tokens" }))).json()).toEqual([]);
+    });
+
+    it("keeps token management to a signed-in session", async () => {
+      expect((await app.inject(bearer(token.secret, { method: "GET", url: "/api/tokens" }))).statusCode).toBe(403);
+      expect((await app.inject(bearer(token.secret, { method: "POST", url: "/api/tokens", payload: { name: "Another" } }))).statusCode).toBe(403);
+      expect((await app.inject(bearer(token.secret, { method: "DELETE", url: `/api/tokens/${token.id}` }))).statusCode).toBe(403);
+      expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/tokens/${token.id}` }))).statusCode).toBe(404);
+    });
+
+    it("refuses an unknown or revoked token even beside a valid session cookie", async () => {
+      expect((await app.inject(bearer("pmx_unknown", as(userCookie, { method: "GET", url: "/api/printers" })))).statusCode).toBe(401);
+      for (const malformed of ["Bearer", "Bearer ", `Bearer ${token.secret} extra`]) {
+        const res = await app.inject(as(userCookie, { method: "GET", url: "/api/printers", headers: { authorization: malformed } }));
+        expect(res.statusCode, malformed).toBe(401);
+      }
+      expect((await app.inject(as(userCookie, { method: "DELETE", url: `/api/tokens/${token.id}` }))).statusCode).toBe(204);
+      expect((await app.inject(bearer(token.secret, { method: "GET", url: "/api/printers" }))).statusCode).toBe(401);
+    });
+
+    it("leaves other authorization schemes, such as a proxy's Basic auth, to the session", async () => {
+      const res = await app.inject(as(userCookie, { method: "GET", url: "/api/printers", headers: { authorization: "Basic cHJveHk6cGFzcw==" } }));
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
   describe("library", () => {
     const pdf = "%PDF-1.4\n%%EOF\n";
     let sharedId: number;
