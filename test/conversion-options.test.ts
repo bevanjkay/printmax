@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
-import { createJob, submitJob } from "../src/server/jobs.js";
+import { createJob, requireJob, submitJob, toDto } from "../src/server/jobs.js";
 import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
 vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), measurePdf: vi.fn() }));
@@ -31,6 +31,31 @@ async function sendIpp(options: Record<string, unknown>, documentFormat = "appli
   const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: new URL(import.meta.url).pathname, byteSize: 10, documentFormat, options });
   await submitJob(db, job as JobRow);
   return vi.mocked(printJob).mock.calls.at(-1)![1];
+}
+
+/** The state a job reports while its document is converted, then while it is sent to the printer. */
+async function reportedStates(printMode: "postscript" | "ipp", options: Record<string, unknown>) {
+  const db = openDb(":memory:");
+  const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
+  db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode) VALUES (?, ?, ?, ?, ?)")
+    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), printMode === "postscript" ? ppd : null, printMode);
+  const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: new URL(import.meta.url).pathname, byteSize: 10, documentFormat: "application/pdf", options });
+  const state = () => toDto(db, requireJob(db, job.id)).state;
+  const seen: { converting?: string; sending?: string } = {};
+  const converted = async () => {
+    seen.converting = state();
+    return Buffer.from("%!PS-Adobe-3.0\n%%Page: 1 1\nshowpage\n");
+  };
+  if (printMode === "postscript")
+    vi.mocked(pdfToPostScript).mockImplementation(converted);
+  else
+    vi.mocked(pdfToGrayscalePdf).mockImplementation(converted);
+  vi.mocked(printJob).mockImplementation(async () => {
+    seen.sending = state();
+    return { jobId: 1, state: "pending", stateReasons: [] };
+  });
+  await submitJob(db, job as JobRow);
+  return { ...seen, after: state() };
 }
 
 beforeEach(() => {
@@ -80,6 +105,13 @@ it("keeps the timeout a whole number of milliseconds that Node's timers can hold
   expect(conversionTimeoutMs(100, 1.1)).toBe(110_000);
   expect(conversionTimeoutMs(19, 1e308)).toBe(2 ** 31 - 1);
   expect(conversionTimeoutMs(19, 1e6)).toBe(2 ** 31 - 1);
+});
+
+it("reports a job as converting while Ghostscript works on it, and only then", async () => {
+  expect(await reportedStates("postscript", { "ppd:PageSize": "A4" })).toEqual({ converting: "converting", sending: "queued", after: "pending" });
+  expect(await reportedStates("ipp", { "black-and-white": "true" })).toEqual({ converting: "converting", sending: "queued", after: "pending" });
+  // A document sent as it came never goes near Ghostscript.
+  expect(await reportedStates("ipp", {})).toEqual({ sending: "queued", after: "pending" });
 });
 
 it("converts a black and white job to greyscale, whether the job or the printer asks", async () => {

@@ -115,6 +115,7 @@ export type Tone = "neutral" | "info" | "success" | "warning" | "danger" | "prog
 
 const STATE_TONES: Record<string, Tone> = {
   "queued": "neutral",
+  "converting": "progress",
   "retrying": "warning",
   "pending": "info",
   "pending-held": "warning",
@@ -145,6 +146,7 @@ export function stateTone(state: string, reasons: string[] = []): Tone {
 
 const STATE_LABELS: Record<string, string> = {
   "queued": "Waiting to send",
+  "converting": "Converting",
   "retrying": "Retrying",
   "pending": "Queued",
   "pending-held": "On hold",
