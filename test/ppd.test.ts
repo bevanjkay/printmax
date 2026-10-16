@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { formFor } from "../src/server/form.js";
 import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/assemble.js";
 import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
-import { ghostscriptAvailable, largestPdfPage, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { ghostscriptAvailable, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
 
@@ -376,14 +376,15 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
     }
   }, 120_000);
 
-  it("reads the largest page out of a PDF without drawing any of it", async () => {
+  it("counts a PDF's pages and reads the largest without drawing any of them", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "printmax-pages-"));
     try {
       const file = path.join(dir, "mixed.pdf");
       await writeFile(file, pagePdf(842, 595));
-      expect(await largestPdfPage(file)).toEqual({ width: 842, height: 595 });
+      expect(await measurePdf(file)).toEqual({ pages: 1, largest: { width: 842, height: 595 } });
+      expect((await measurePdf(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname))?.pages).toBe(8);
       await writeFile(file, Buffer.from("%PDF-1.7\nnot really\n"));
-      expect(await largestPdfPage(file)).toBeNull();
+      expect(await measurePdf(file)).toBeNull();
     }
     finally {
       await rm(dir, { recursive: true, force: true });

@@ -46,6 +46,7 @@ async function main(): Promise<void> {
     intervalMs: config.pollIntervalMs,
     capsRefreshHours: config.capsRefreshHours,
     maxPostScriptBytes: config.maxPostScriptBytes,
+    postScriptSecondsPerPage: config.postScriptSecondsPerPage,
     onError: err => app.log.error(err, "job worker error"),
     onInfo: (message, data) => app.log.warn(data ?? {}, message),
   });

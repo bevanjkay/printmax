@@ -50,6 +50,7 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `DISCOVERY_TIMEOUT_MS` | `3000` | How long a network scan listens for DNS-SD answers |
 | `MAX_UPLOAD_MB` | `200` | Upload size limit |
 | `MAX_POSTSCRIPT_MB` | `512` | Ceiling on the PostScript one conversion may produce; image-heavy pages cost a few MB each, whatever the PDF weighed |
+| `POSTSCRIPT_SECONDS_PER_PAGE` | `10` | Seconds one conversion may take per page, or a minute if that is longer; a page with transparency is rasterised and costs seconds |
 | `STORED_DIR` | `/data/stored` | Library documents, kept until deleted |
 | `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
@@ -105,8 +106,9 @@ its container path (for example `/certs/printer-ca.pem`) in the service environm
 Obtain that certificate through a trusted channel; its subject alternative name must match the
 printer URI. Existing self-signed IPPS printers need this configuration after upgrading.
 
-PostScript mode invokes Ghostscript's PDF interpreter directly and stops conversion after 60 seconds
-or `MAX_POSTSCRIPT_MB` of generated output. Conversion runs at the PPD's `*DefaultResolution`, so a
+PostScript mode invokes Ghostscript's PDF interpreter directly and stops conversion after
+`POSTSCRIPT_SECONDS_PER_PAGE` for each page (60 seconds at least) or `MAX_POSTSCRIPT_MB` of
+generated output. Conversion runs at the PPD's `*DefaultResolution`, so a
 page `ps2write` has to rasterise costs what the engine can image rather than its 720 dpi default. Cancellation terminates an active conversion. These bounds are separate
 from the upload size limit. Temporary upload files abandoned by a crash are removed after 24 hours;
 in-flight uploads are excluded.

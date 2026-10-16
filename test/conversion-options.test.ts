@@ -1,4 +1,4 @@
-import type { JobRow } from "../src/server/jobs.js";
+import type { ConversionLimits, JobRow } from "../src/server/jobs.js";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -6,20 +6,20 @@ import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, submitJob } from "../src/server/jobs.js";
-import { pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 
-vi.mock("../src/server/ppd/ghostscript.js", () => ({ pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), largestPdfPage: vi.fn().mockResolvedValue({ width: 842, height: 595 }) }));
+vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), measurePdf: vi.fn() }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
 
 const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 
-function convert(options: Record<string, unknown>, optionDefaults: Record<string, unknown> = {}) {
+function convert(options: Record<string, unknown>, optionDefaults: Record<string, unknown> = {}, limits: ConversionLimits = {}) {
   const db = openDb(":memory:");
   const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
   db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode, option_defaults) VALUES (?, ?, ?, ?, ?, ?)")
     .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), ppd, "postscript", JSON.stringify(optionDefaults));
   const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: "/unused/test.pdf", byteSize: 10, documentFormat: "application/pdf", options });
-  return submitJob(db, job as JobRow).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
+  return submitJob(db, job as JobRow, limits).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
 }
 
 /** Submits a job to a printer in IPP mode and returns what went to the printer. */
@@ -35,6 +35,7 @@ async function sendIpp(options: Record<string, unknown>, documentFormat = "appli
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(measurePdf).mockResolvedValue({ pages: 1, largest: { width: 842, height: 595 } });
   vi.mocked(pdfToGrayscalePdf).mockResolvedValue(Buffer.from("%PDF-1.7 grey"));
   vi.mocked(pdfToPostScript).mockResolvedValue(Buffer.from("%!PS-Adobe-3.0\n%%Page: 1 1\nshowpage\n"));
   vi.mocked(printJob).mockResolvedValue({ jobId: 1, state: "completed", stateReasons: [] });
@@ -57,10 +58,28 @@ it("forces the chosen sheet either way, so the printer asks for the paper PageSi
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ paper, fitToPaper: false });
 });
 
-it("measures the document only when its pages are the ones being placed", async () => {
+it("passes the document's page size only when its pages are the ones being placed", async () => {
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ documentPage: { width: 842, height: 595 } });
   // Fitted, every page is scaled to the sheet, so its own size decides nothing.
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).not.toHaveProperty("documentPage");
+});
+
+it("gives a long document time in proportion to its pages, since ps2write may rasterise every one", async () => {
+  vi.mocked(measurePdf).mockResolvedValue({ pages: 19, largest: { width: 842, height: 1191 } });
+  expect(await convert({ "ppd:PageSize": "A3" })).toMatchObject({ timeoutMs: 190_000 });
+  expect(await convert({ "ppd:PageSize": "A3" }, {}, { postScriptSecondsPerPage: 20 })).toMatchObject({ timeoutMs: 380_000 });
+  // A short document keeps the flat minute, as does one Ghostscript could not count.
+  vi.mocked(measurePdf).mockResolvedValue({ pages: 2, largest: { width: 842, height: 1191 } });
+  expect(await convert({ "ppd:PageSize": "A3" })).toMatchObject({ timeoutMs: 60_000 });
+  vi.mocked(measurePdf).mockResolvedValue(null);
+  expect(await convert({ "ppd:PageSize": "A3" })).toMatchObject({ timeoutMs: 60_000 });
+});
+
+it("keeps the timeout a whole number of milliseconds that Node's timers can hold, whatever the setting", () => {
+  // execFile throws on a fractional or infinite timeout, and quietly fires one past 2^31 - 1 ms after 1 ms.
+  expect(conversionTimeoutMs(100, 1.1)).toBe(110_000);
+  expect(conversionTimeoutMs(19, 1e308)).toBe(2 ** 31 - 1);
+  expect(conversionTimeoutMs(19, 1e6)).toBe(2 ** 31 - 1);
 });
 
 it("converts a black and white job to greyscale, whether the job or the printer asks", async () => {
