@@ -219,12 +219,30 @@ Errors come back as `{ "error": "..." }` with a 4xx status. Options are checked 
 printer's capabilities before a job is queued (a 422 lists what is wrong); if the printer itself
 refuses the job later, the job's `state` and `error` say so.
 
+## MCP
+
+printmax is also a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp`, so an
+AI assistant can print on request ("print 20 timesheets", "did my report come out?"). It takes the
+same API tokens and acts as the token's owner. With Claude Code:
+
+```sh
+claude mcp add --transport http printmax https://print.example.org/mcp \
+  --header "Authorization: Bearer pmx_..."
+```
+
+The tools list printers, their options, presets, Library documents and jobs; check options without
+printing; print a Library document, a file or an earlier job again; and cancel a job. A file goes
+to `print_file` inline as base64, so it suits small documents (20 MB at most); Library documents
+and reprints are already on the server. The assistant must be able to reach printmax, which a LAN
+or a tailnet does; cloud-hosted connectors such as claude.ai's need it on the internet and sign in
+with OAuth, which printmax does not offer.
+
 ## Layout
 
 - `src/server/ipp/` — RFC 8010 codec, HTTP transport, operations, option typing and validation,
   constraint/resolver evaluation
-- `src/server/` — SQLite (`node:sqlite`), auth and sessions, printers, presets, jobs, worker,
-  capability diffing, DNS-SD discovery, Fastify app
+- `src/server/` — SQLite (`node:sqlite`), auth, sessions and API tokens, printers, presets, jobs,
+  worker, capability diffing, DNS-SD discovery, MCP server, Fastify app
 - `src/shared/` — DTOs, IPP enum tables, and the attribute label/widget table
 - `src/client/` — React front end, served static by the server in production
 - `fixtures/` — verbatim Get-Printer-Attributes dumps used as test data

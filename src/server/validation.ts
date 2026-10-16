@@ -3,10 +3,10 @@
  * In IPP mode the option map is checked against the printer's capabilities; in PostScript
  * mode against the PPD, with `copies` still an IPP attribute.
  */
-import type { DocumentSize } from "../shared/types.js";
+import type { DocumentSize, ValidationResult } from "../shared/types.js";
 import type { PrinterProfile } from "./printers.js";
 import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX, toggleIsOn } from "../shared/attributes.js";
-import { checkConstraints, describeViolation } from "./ipp/constraints.js";
+import { applyResolvers, checkConstraints, describeViolation } from "./ipp/constraints.js";
 import { validateOptions } from "./ipp/options.js";
 import { ppdChoices, validatePpdOptions } from "./ppd/form.js";
 
@@ -75,4 +75,20 @@ export function jobWarnings(options: Record<string, unknown>, profile: PrinterPr
   if (pageShort <= paperShort && pageLong <= paperLong)
     return [];
   return [`This document's pages are ${mm(pageShort)} \u00D7 ${mm(pageLong)} mm, larger than ${size} (${mm(paperShort)} \u00D7 ${mm(paperLong)} mm). With fit to paper off they print at their own size, so whatever falls outside the sheet is cut.`];
+}
+
+/** The editor's live check: what blocks a job, what is only advice, and the printer's own fix where it publishes one. */
+export function checkOptions(options: Record<string, unknown>, profile: PrinterProfile, document?: DocumentSize): ValidationResult {
+  const errors = validateJobOptions(options, profile);
+  const warnings = jobWarnings(options, profile, document);
+  let resolved = options;
+  if (errors.length > 0) {
+    try {
+      resolved = applyResolvers(options, profile.caps);
+    }
+    catch {
+      resolved = options;
+    }
+  }
+  return { errors, warnings, resolved };
 }

@@ -5,10 +5,9 @@ import { acknowledgeCapsChange, listCapsChanges, toCapsChangeDto } from "../caps
 import { discoverPrinters } from "../discovery.js";
 import { HttpError, notFound } from "../errors.js";
 import { formFor } from "../form.js";
-import { applyResolvers } from "../ipp/constraints.js";
 import { addPrinter, capsFor, clearPpd, deletePrinter, discoveredCaps, listPrinters, overrideCaps, printerRemovalImpact, profileFor, refreshPrinter, requirePrinter, setDefaults, setOverrides, setPpd, setPrintMode, toDto } from "../printers.js";
 import { probeOptions } from "../probe.js";
-import { jobWarnings, validateJobOptions } from "../validation.js";
+import { checkOptions } from "../validation.js";
 import { idParam } from "./params.js";
 
 interface AddPrinterBody {
@@ -50,21 +49,7 @@ export function printerRoutes(app: FastifyInstance, db: Db): void {
     const body = (req.body ?? {}) as { options?: unknown; documentSize?: unknown };
     if (typeof body.options !== "object" || body.options === null || Array.isArray(body.options))
       throw new HttpError(400, "options must be an object");
-    const options = body.options as Record<string, unknown>;
-    const caps = capsFor(printer);
-    const profile = profileFor(printer);
-    const errors = validateJobOptions(options, profile);
-    const warnings = jobWarnings(options, profile, documentSize(body.documentSize));
-    let resolved = options;
-    if (errors.length > 0) {
-      try {
-        resolved = applyResolvers(options, caps);
-      }
-      catch {
-        resolved = options;
-      }
-    }
-    return { errors, warnings, resolved };
+    return checkOptions(body.options as Record<string, unknown>, profileFor(printer), documentSize(body.documentSize));
   });
 }
 
