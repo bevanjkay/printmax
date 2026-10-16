@@ -1,6 +1,6 @@
 import path from "node:path";
 import process from "node:process";
-import { DEFAULT_MAX_OUTPUT_BYTES } from "./ppd/ghostscript.js";
+import { DEFAULT_MAX_OUTPUT_BYTES, DEFAULT_SECONDS_PER_PAGE } from "./ppd/ghostscript.js";
 
 export interface Config {
   port: number;
@@ -17,6 +17,8 @@ export interface Config {
   maxUploadBytes: number;
   /** Ceiling on the PostScript a conversion may produce, which for image-heavy pages far exceeds the PDF. */
   maxPostScriptBytes: number;
+  /** Seconds a conversion may take per page, or a minute if that is longer: a rasterised page costs seconds. */
+  postScriptSecondsPerPage: number;
   staticDir: string;
   /** Required by the first-run setup page; generated and logged at startup when unset. */
   setupToken: string | null;
@@ -57,6 +59,7 @@ export function loadConfig(env = process.env): Config {
     discoveryTimeoutMs: int(env, "DISCOVERY_TIMEOUT_MS", 3000),
     maxUploadBytes: int(env, "MAX_UPLOAD_MB", 200) * 1024 * 1024,
     maxPostScriptBytes: int(env, "MAX_POSTSCRIPT_MB", DEFAULT_MAX_OUTPUT_BYTES / (1024 * 1024)) * 1024 * 1024,
+    postScriptSecondsPerPage: int(env, "POSTSCRIPT_SECONDS_PER_PAGE", DEFAULT_SECONDS_PER_PAGE),
     staticDir: path.resolve(env.STATIC_DIR ?? path.join(import.meta.dirname, "..", "client")),
     setupToken: env.SETUP_TOKEN || null,
     trustProxy: trustProxyFrom(env.TRUST_PROXY),

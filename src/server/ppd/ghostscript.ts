@@ -15,6 +15,22 @@ const run = promisify(execFile);
  */
 export const DEFAULT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
 
+/** The least a conversion is allowed, which on its own is all a short document needs. */
+const MIN_TIMEOUT_MS = 60_000;
+
+/**
+ * A page ps2write rasterises takes seconds at the engine's resolution (two for an A3 sheet at 600 dpi
+ * on a laptop, more on a small server), so like the output, the time a conversion needs scales with pages.
+ */
+export const DEFAULT_SECONDS_PER_PAGE = 10;
+
+/** Node quietly turns a longer timer into one of 1 ms, which would kill every conversion at once. */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+export function conversionTimeoutMs(pages: number, secondsPerPage = DEFAULT_SECONDS_PER_PAGE): number {
+  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.round(pages * secondsPerPage * 1000)));
+}
+
 /** Ghostscript's own messages, which are all that reaches us now that the document goes to a file. */
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
@@ -118,10 +134,10 @@ const PAGE_BOXES = "PDFFile (r) file runpdfbegin 1 1 pdfpagecount { pdfgetpage d
   + " x1 x0 sub 20 string cvs print ( ) print y1 y0 sub 20 string cvs print ( ) print rot 20 string cvs print (\n) print flush } for runpdfend";
 
 /**
- * The largest page in a PDF, in points, turned as its own /Rotate asks. Best effort: a document
- * Ghostscript cannot walk simply goes unmeasured, and its pages are placed as they always were.
+ * How many pages a PDF has and the largest of them, in points, turned as its own /Rotate asks. Best
+ * effort: a document Ghostscript cannot walk simply goes unmeasured, and is converted as it always was.
  */
-export async function largestPdfPage(pdfPath: string, opts: Pick<ConvertOptions, "signal" | "timeoutMs"> = {}): Promise<{ width: number; height: number } | null> {
+export async function measurePdf(pdfPath: string, opts: Pick<ConvertOptions, "signal" | "timeoutMs"> = {}): Promise<{ pages: number; largest: { width: number; height: number } } | null> {
   const file = path.resolve(pdfPath);
   try {
     const { stdout } = await run("gs", ["-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dSAFER", `--permit-file-read=${file}`, `-sPDFFile=${file}`, "-c", PAGE_BOXES], {
@@ -131,17 +147,19 @@ export async function largestPdfPage(pdfPath: string, opts: Pick<ConvertOptions,
       killSignal: "SIGKILL",
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
+    let pages = 0;
     let largest: { width: number; height: number } | null = null;
     for (const line of stdout.split("\n")) {
       const [w, h, rot] = line.trim().split(/\s+/).map(Number);
       if (!w || !h || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0)
         continue;
+      pages++;
       const turned = Math.abs(Math.round((rot ?? 0) / 90) % 2) === 1;
       const size = turned ? { width: h, height: w } : { width: w, height: h };
       if (!largest || size.width * size.height > largest.width * largest.height)
         largest = size;
     }
-    return largest;
+    return largest ? { pages, largest } : null;
   }
   catch {
     return null;
@@ -194,7 +212,7 @@ async function convertPdf(pdfPath: string, outName: string, deviceArgs: string[]
     try {
       const { stderr } = await run("gs", args, {
         encoding: "buffer",
-        timeout: opts.timeoutMs ?? 60_000,
+        timeout: opts.timeoutMs ?? MIN_TIMEOUT_MS,
         maxBuffer: MAX_MESSAGE_BYTES,
         killSignal: "SIGKILL",
         ...(opts.signal ? { signal: opts.signal } : {}),

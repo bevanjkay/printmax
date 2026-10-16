@@ -17,7 +17,7 @@ import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/ope
 import { buildJobAttributes } from "./ipp/options.js";
 import { assemblePostScript } from "./ppd/assemble.js";
 import { marginsFor, ppdChoices } from "./ppd/form.js";
-import { largestPdfPage, pdfToGrayscalePdf, pdfToPostScript } from "./ppd/ghostscript.js";
+import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "./ppd/ghostscript.js";
 import { canUsePreset, getPreset } from "./presets.js";
 import { getPrinter, profileFor, refreshStalePrinters, requirePrinter, targetFor } from "./printers.js";
 import { validateJobOptions } from "./validation.js";
@@ -257,10 +257,13 @@ async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<s
   const fitToPaper = toggleIsOn(options, defaults, FIT_TO_PAGE, true);
   const keepMargins = toggleIsOn(options, defaults, FIT_TO_MARGINS, false);
   const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
-  // Only an unfitted page needs measuring; a fitted one is scaled to the sheet whatever size it was.
-  const documentPage = paper && !fitToPaper ? await largestPdfPage(job.file_path!, { signal }) : null;
+  // The page count sets how long conversion may take. Only an unfitted page needs its size; a fitted
+  // one is scaled to the sheet whatever size it was.
+  const measured = await measurePdf(job.file_path!, { signal });
+  const documentPage = paper && !fitToPaper ? measured?.largest : undefined;
   const document = await pdfToPostScript(job.file_path!, {
     signal,
+    timeoutMs: conversionTimeoutMs(measured?.pages ?? 0, limits.postScriptSecondsPerPage),
     fitToPaper,
     grayscale: toggleIsOn(options, defaults, BLACK_AND_WHITE, false),
     ...(documentPage ? { documentPage } : {}),
@@ -375,6 +378,8 @@ export interface JobWorker {
 export interface ConversionLimits {
   /** Ceiling on the PostScript one conversion may produce; the converter's own default when unset. */
   maxPostScriptBytes?: number;
+  /** Seconds a conversion may take per page, or a minute if that is longer; the converter's own default when unset. */
+  postScriptSecondsPerPage?: number;
 }
 
 export interface JobWorkerOptions extends ConversionLimits {
