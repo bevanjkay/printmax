@@ -10,6 +10,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import { apiTokenUser, bearerToken, requireAdmin, requireSession, requireUser, SESSION_COOKIE, sessionUser } from "./auth.js";
 import { HttpError } from "./errors.js";
+import { mcpRoutes } from "./mcp.js";
 import { authRoutes } from "./routes/auth.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { libraryRoutes } from "./routes/library.js";
@@ -117,6 +118,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const storedDir = opts.storedDir ?? path.join(path.dirname(opts.uploadDir), "stored");
     mkdirSync(storedDir, { recursive: true });
     libraryRoutes(scope, db, { storedDir, uploadDir: opts.uploadDir });
+    mcpRoutes(scope, db, { uploadDir: opts.uploadDir, maxUploadBytes: opts.maxUploadBytes ?? 200 * 1024 * 1024 });
   });
 
   await app.register(async (scope) => {
