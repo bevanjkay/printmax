@@ -233,9 +233,11 @@ claude mcp add --transport http printmax https://print.example.org/mcp \
 ```
 
 The tools list printers, their options, presets, Library documents and jobs; check options without
-printing; print a Library document, a file or an earlier job again; and cancel a job. A file goes
-to `print_file` inline as base64, so it suits small documents (20 MB at most); Library documents
-and reprints are already on the server. The assistant must be able to reach printmax, which a LAN
+printing; print a Library document, a file or an earlier job again; cancel a job; and add,
+update, replace the file of or delete a Library document, with the same permissions as the web
+app. A file goes to `print_file`, `add_library_document` or `replace_library_file` inline as
+base64, so it suits small documents (20 MB at most); Library documents and reprints are already
+on the server. The assistant must be able to reach printmax, which a LAN
 or a tailnet does; cloud-hosted connectors such as claude.ai's need it on the internet and sign in
 with OAuth, which printmax does not offer.
 

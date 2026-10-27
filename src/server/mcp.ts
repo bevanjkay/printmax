@@ -1,7 +1,8 @@
 import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from "fastify";
-import type { JobDto } from "../shared/types.js";
+import type { JobDto, StoredJobDto } from "../shared/types.js";
 import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
+import type { StoredFile, StoredJobRow } from "./library.js";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { unlink, writeFile } from "node:fs/promises";
@@ -12,7 +13,7 @@ import { HttpError, notFound } from "./errors.js";
 import { formFor } from "./form.js";
 import { sniffFormat, SUPPORTED_FORMATS } from "./format.js";
 import { cancelJob, canSeeJob, createJob, listJobs, reprintJob, requireJob, toDto as toJobDto } from "./jobs.js";
-import { listStoredJobs, printStoredJob, toStoredJobDto } from "./library.js";
+import { createStoredJob, deleteStoredJob, listStoredJobs, printStoredJob, replaceStoredFile, requireStoredJob, toStoredJobDto, updateStoredJob } from "./library.js";
 import { listPresetsFor, toPresetDto } from "./presets.js";
 import { listPrinters, profileFor, requirePrinter, toDto as toPrinterDto } from "./printers.js";
 import { checkOptions } from "./validation.js";
@@ -25,14 +26,20 @@ const INSTRUCTIONS = `printmax sends documents to the office's network printers 
 - Job options are a flat map of IPP attribute names to values, such as {"copies": 2, "sides": "two-sided-long-edge"}. get_print_options lists every option a printer takes with its choices and default; use those names and values exactly. A printer in PostScript mode takes "ppd:<Key>" options in place of most IPP ones.
 - Prefer a Library document (list_library) or a preset (list_presets) over building options by hand, and pass only the options that should differ.
 - Printing uses paper and cannot be taken back once the printer starts. Confirm the printer, the document and the number of copies with the user before calling a print tool; check_options tests options without printing.
-- A print tool returns the queued job; get_job reports how it went.`;
+- A print tool returns the queued job; get_job reports how it went.
+- A shared Library document changes for everyone. Confirm with the user before replacing its file or deleting it.`;
 
 const id = z.number().int().positive();
 const options = z.record(z.string(), z.unknown()).describe("Flat map of option name to value, as listed by get_print_options");
 const copies = z.number().int().min(1).describe("Number of copies");
+const filename = z.string().min(1).max(255);
+const content = z.string().describe("The file's bytes, base64 encoded");
+const scope = z.enum(["user", "global"]).describe("\"global\" shares it with everyone (admins only); \"user\" keeps it to you");
 
 const readOnly = { readOnlyHint: true, openWorldHint: false };
 const prints = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const adds = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+const overwrites = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
 
 function jobSummary(job: JobDto) {
   return {
@@ -54,6 +61,28 @@ function jobSummary(job: JobDto) {
   };
 }
 
+function librarySummary(d: StoredJobDto) {
+  return {
+    id: d.id,
+    name: d.name,
+    groupId: d.groupId,
+    group: d.group,
+    scope: d.scope,
+    printerId: d.printerId,
+    printer: d.printerName,
+    presetId: d.presetId,
+    preset: d.presetName,
+    filename: d.filename,
+    documentFormat: d.documentFormat,
+    overrides: d.options,
+    options: d.effectiveOptions,
+    problems: d.problems,
+    editable: d.editable,
+    printCount: d.printCount,
+    lastPrintedAt: d.lastPrintedAt,
+  };
+}
+
 function decodeBase64(text: string): Buffer {
   const body = text.replace(/^data:[^,]*;base64,/, "").replace(/\s+/g, "");
   if (body.length % 4 !== 0 || !/^[A-Z0-9+/]*={0,2}$/i.test(body))
@@ -63,7 +92,7 @@ function decodeBase64(text: string): Buffer {
   return Buffer.from(body, "base64");
 }
 
-function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; maxUploadBytes: number }, log: FastifyBaseLogger): McpServer {
+function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; storedDir: string; maxUploadBytes: number }, log: FastifyBaseLogger): McpServer {
   const server = new McpServer({ name: "printmax", version: "0.1.0" }, { instructions: INSTRUCTIONS });
 
   /** Refusals keep their message, as the REST API's do; anything unexpected is logged and stays vague. */
@@ -78,6 +107,37 @@ function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; maxUpload
       throw new Error("internal error");
     }
   };
+
+  /** Writes a base64 file into `dir` under a random name, refusing what printmax cannot print. */
+  const receiveInline = async (dir: string, name: string, text: string): Promise<StoredFile> => {
+    const bytes = decodeBase64(text);
+    if (bytes.length > opts.maxUploadBytes)
+      throw new HttpError(413, "file exceeds the upload size limit");
+    const sniffed = sniffFormat(bytes.subarray(0, 16));
+    if (!sniffed)
+      throw new HttpError(415, `unrecognised file type; send one of ${SUPPORTED_FORMATS.join(", ")}`);
+    const filePath = path.join(dir, `${randomUUID()}${sniffed.extension}`);
+    await writeFile(filePath, bytes, { flag: "wx", mode: 0o600 }).catch(async (err: NodeJS.ErrnoException) => {
+      if (err.code !== "EEXIST")
+        await unlink(filePath).catch(() => {});
+      throw err;
+    });
+    return { filePath, filename: path.basename(name), byteSize: bytes.length, format: sniffed.format };
+  };
+
+  /** Runs `work` with the received file, removing it if `work` refuses. */
+  const withInline = async <T>(dir: string, name: string, text: string, work: (file: StoredFile) => T | Promise<T>): Promise<T> => {
+    const file = await receiveInline(dir, name, text);
+    try {
+      return await work(file);
+    }
+    catch (err) {
+      await unlink(file.filePath).catch(() => {});
+      throw err;
+    }
+  };
+
+  const libraryDocument = (row: StoredJobRow) => librarySummary(toStoredJobDto(db, row, user));
 
   server.registerTool("list_printers", {
     title: "List printers",
@@ -107,7 +167,7 @@ function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; maxUpload
 
   server.registerTool("list_library", {
     title: "List Library documents",
-    description: "Documents kept for printing again, such as forms and price lists, each with the options a print would use.",
+    description: "Documents kept for printing again, such as forms and price lists. Each has its preset, the overrides it layers on that preset, and the options a print would use.",
     inputSchema: z.object({
       printerId: id.optional().describe("Only this printer's documents"),
       search: z.string().optional().describe("Matches the name, file, group or preset, ignoring case"),
@@ -118,7 +178,7 @@ function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; maxUpload
     return listStoredJobs(db, user, printerId)
       .map(row => toStoredJobDto(db, row, user))
       .filter(d => [d.name, d.filename, d.group, d.presetName].some(text => text?.toLowerCase().includes(needle)))
-      .map(d => ({ id: d.id, name: d.name, group: d.group, printerId: d.printerId, printer: d.printerName, preset: d.presetName, filename: d.filename, documentFormat: d.documentFormat, options: d.effectiveOptions, problems: d.problems, printCount: d.printCount, lastPrintedAt: d.lastPrintedAt }));
+      .map(librarySummary);
   }));
 
   server.registerTool("check_options", {
@@ -140,29 +200,73 @@ function buildServer(db: Db, user: UserRow, opts: { uploadDir: string; maxUpload
     description: `Prints a PDF, PNG or JPEG sent as base64, up to ${INLINE_FILE_BYTES / 1024 / 1024} MB. Options are layered over the preset's, if one is given.`,
     inputSchema: z.object({
       printerId: id,
-      filename: z.string().min(1).max(255).describe("Shown in the job list"),
-      content: z.string().describe("The file's bytes, base64 encoded"),
+      filename: filename.describe("Shown in the job list"),
+      content,
       presetId: id.optional(),
       options: options.optional(),
     }),
     annotations: prints,
-  }, ({ printerId, filename, content, presetId, options }) => answer(async () => {
-    const bytes = decodeBase64(content);
-    if (bytes.length > opts.maxUploadBytes)
-      throw new HttpError(413, "file exceeds the upload size limit");
-    const sniffed = sniffFormat(bytes.subarray(0, 16));
-    if (!sniffed)
-      throw new HttpError(415, `unrecognised file type; send one of ${SUPPORTED_FORMATS.join(", ")}`);
-    const filePath = path.join(opts.uploadDir, `${randomUUID()}${sniffed.extension}`);
-    await writeFile(filePath, bytes, { flag: "wx", mode: 0o600 });
-    try {
-      const job = createJob(db, { printerId, user, presetId: presetId ?? null, filename: path.basename(filename), filePath, byteSize: bytes.length, documentFormat: sniffed.format, options: options ?? {} });
-      return jobSummary(toJobDto(db, job));
-    }
-    catch (err) {
-      await unlink(filePath).catch(() => {});
-      throw err;
-    }
+  }, ({ printerId, filename, content, presetId, options }) => answer(() => withInline(opts.uploadDir, filename, content, (file) => {
+    const job = createJob(db, { printerId, user, presetId: presetId ?? null, filename: file.filename, filePath: file.filePath, byteSize: file.byteSize, documentFormat: file.format, options: options ?? {} });
+    return jobSummary(toJobDto(db, job));
+  })));
+
+  server.registerTool("add_library_document", {
+    title: "Add a Library document",
+    description: `Keeps a PDF, PNG or JPEG, sent as base64 up to ${INLINE_FILE_BYTES / 1024 / 1024} MB, in the Library for printing again. Its options are layered over the preset's, if one is given. Refused if it could not print as it stands.`,
+    inputSchema: z.object({
+      printerId: id,
+      name: z.string().min(1).describe("Shown in the Library"),
+      filename: filename.describe("The file's own name"),
+      content,
+      presetId: id.optional(),
+      groupId: id.optional().describe("A group on the same printer, from list_library"),
+      scope: scope.default("user"),
+      options: options.optional(),
+    }),
+    annotations: adds,
+  }, ({ printerId, name, filename, content, presetId, groupId, scope, options }) => answer(() => withInline(opts.storedDir, filename, content, file =>
+    libraryDocument(createStoredJob(db, { printerId, name, presetId, groupId, scope, options }, file, user)))));
+
+  server.registerTool("update_library_document", {
+    title: "Update a Library document",
+    description: "Changes a Library document's name, preset, group, sharing or overrides. Anything left out stays as it is; options replaces the overrides as a whole, and null clears the preset or group.",
+    inputSchema: z.object({
+      id: id.describe("Library document id"),
+      name: z.string().min(1).optional(),
+      presetId: id.nullable().optional(),
+      groupId: id.nullable().optional(),
+      scope: scope.optional(),
+      options: options.optional().describe("The overrides layered on the preset, as listed by list_library; {} follows the preset alone"),
+    }),
+    annotations: overwrites,
+  }, input => answer(() => {
+    const current = toStoredJobDto(db, requireStoredJob(db, input.id), user);
+    return libraryDocument(updateStoredJob(db, input.id, {
+      name: input.name ?? current.name,
+      presetId: input.presetId === undefined ? current.presetId : input.presetId,
+      groupId: input.groupId === undefined ? current.groupId : input.groupId,
+      scope: input.scope ?? current.scope,
+      options: input.options ?? current.options,
+    }, user));
+  }));
+
+  server.registerTool("replace_library_file", {
+    title: "Replace a Library document's file",
+    description: `Swaps the file a Library document prints for a new PDF, PNG or JPEG, sent as base64 up to ${INLINE_FILE_BYTES / 1024 / 1024} MB, keeping its name and options. The old file is deleted.`,
+    inputSchema: z.object({ id: id.describe("Library document id"), filename: filename.describe("The new file's own name"), content }),
+    annotations: overwrites,
+  }, ({ id, filename, content }) => answer(() => withInline(opts.storedDir, filename, content, async file =>
+    libraryDocument(await replaceStoredFile(db, id, file, user)))));
+
+  server.registerTool("delete_library_document", {
+    title: "Delete a Library document",
+    description: "Removes a document from the Library and deletes its file. Jobs already printed from it are kept.",
+    inputSchema: z.object({ id: id.describe("Library document id") }),
+    annotations: overwrites,
+  }, ({ id }) => answer(async () => {
+    await deleteStoredJob(db, id, user);
+    return { deleted: id };
   }));
 
   server.registerTool("list_jobs", {
@@ -222,7 +326,7 @@ function webRequest(req: FastifyRequest): Request {
  * SDK's Host and Origin guards are left out: they stop a rebound page borrowing a localhost
  * server's ambient access, and here every request already needs a token or session of its own.
  */
-export function mcpRoutes(app: FastifyInstance, db: Db, opts: { uploadDir: string; maxUploadBytes: number }): void {
+export function mcpRoutes(app: FastifyInstance, db: Db, opts: { uploadDir: string; storedDir: string; maxUploadBytes: number }): void {
   const handler = createMcpHandler(({ authInfo }) => buildServer(db, authInfo!.extra!.user as UserRow, opts, app.log));
   app.addHook("onClose", async () => handler.close());
 

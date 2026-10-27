@@ -67,7 +67,7 @@ describe("mCP server", () => {
   it("lists its tools, marking which ones print", async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map(t => [t.name, t]));
-    expect(Object.keys(byName).sort()).toEqual(["cancel_job", "check_options", "get_job", "get_print_options", "list_jobs", "list_library", "list_presets", "list_printers", "print_file", "print_library_document", "reprint_job"]);
+    expect(Object.keys(byName).sort()).toEqual(["add_library_document", "cancel_job", "check_options", "delete_library_document", "get_job", "get_print_options", "list_jobs", "list_library", "list_presets", "list_printers", "print_file", "print_library_document", "replace_library_file", "reprint_job", "update_library_document"]);
     expect(byName.list_printers!.annotations?.readOnlyHint).toBe(true);
     expect(byName.print_file!.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false });
     expect(client.getInstructions()).toContain("flat map of IPP attribute names");
@@ -123,6 +123,64 @@ describe("mCP server", () => {
     expect(job).toMatchObject({ filename: "timesheet.pdf", options: { copies: 3, sides: "two-sided-long-edge" } });
   });
 
+  it("adds, updates, replaces and deletes the user's own Library documents", async () => {
+    const stamp = new Date().toISOString();
+    const presetId = Number(db.prepare("INSERT INTO presets (printer_id, name, scope, options, created_at, updated_at) VALUES (?, 'Rota preset', 'global', '{\"sides\":\"one-sided\"}', ?, ?)").run(printerId, stamp, stamp).lastInsertRowid);
+    const groupId = Number(db.prepare("INSERT INTO library_groups (printer_id, name, position, created_at) VALUES (?, 'Rotas', 1, ?)").run(printerId, stamp).lastInsertRowid);
+    const before = new Set(await readdir(dir));
+    const added = await call<{ id: number; name: string; scope: string; filename: string; overrides: Record<string, unknown> }>("add_library_document", { printerId, name: "Rota", filename: "rota.pdf", content: PDF, presetId, groupId, options: { sides: "two-sided-long-edge" } });
+    expect(added).toMatchObject({ name: "Rota", scope: "user", filename: "rota.pdf", presetId, groupId, overrides: { sides: "two-sided-long-edge" } });
+    const [firstFile] = (await readdir(dir)).filter(f => !before.has(f));
+    expect(firstFile).toMatch(/\.pdf$/);
+
+    expect(await refusal("add_library_document", { printerId, name: "Shared", filename: "s.pdf", content: PDF, scope: "global" })).toContain("only admins");
+    expect(await refusal("add_library_document", { printerId, name: "Bad", filename: "b.pdf", content: PDF, options: { sides: "sideways" } })).toContain("sides");
+    expect((await readdir(dir)).filter(f => !before.has(f))).toEqual([firstFile]);
+
+    const renamed = await call<{ name: string; overrides: Record<string, unknown> }>("update_library_document", { id: added.id, name: "Weekly rota" });
+    expect(renamed).toMatchObject({ name: "Weekly rota", presetId, groupId, overrides: { sides: "two-sided-long-edge" } });
+    expect(await call("update_library_document", { id: added.id, presetId: null, groupId: null })).toMatchObject({ name: "Weekly rota", presetId: null, groupId: null });
+    const detached = await call<{ overrides: Record<string, unknown>; options: Record<string, unknown> }>("update_library_document", { id: added.id, options: {} });
+    expect([detached.overrides, detached.options]).toEqual([{}, {}]);
+
+    const png = Buffer.from("\x89PNG\r\n\x1A\n0000000000", "latin1").toString("base64");
+    const replaced = await call<{ filename: string; documentFormat: string }>("replace_library_file", { id: added.id, filename: "rota.png", content: png });
+    expect(replaced).toMatchObject({ filename: "rota.png", documentFormat: "image/png" });
+    expect(await readdir(dir)).not.toContain(firstFile);
+
+    const [shared] = await call<Array<{ id: number; editable: boolean }>>("list_library", { search: "timesheet" });
+    expect(shared?.editable).toBe(false);
+    expect(await refusal("update_library_document", { id: shared!.id, name: "Mine now" })).toContain("cannot edit");
+    expect(await refusal("replace_library_file", { id: shared!.id, filename: "x.pdf", content: PDF })).toContain("cannot edit");
+    expect(await refusal("delete_library_document", { id: shared!.id })).toContain("cannot delete");
+
+    expect(await call("delete_library_document", { id: added.id })).toEqual({ deleted: added.id });
+    expect(await call("list_library", { search: "rota" })).toEqual([]);
+    expect(new Set(await readdir(dir))).toEqual(before);
+  });
+
+  it("refuses a Library file the printer cannot take, keeping the one it has", async () => {
+    const caps = JSON.parse(await readFile(new URL("../fixtures/ippeveprinter.json", import.meta.url), "utf8")) as Record<string, unknown>;
+    caps["document-format-supported"] = { type: "mimeMediaType", values: ["application/pdf"] };
+    const pdfOnly = Number(db.prepare("INSERT INTO printers (name, uri, caps_discovered, created_at) VALUES ('PDF only', 'ipp://127.0.0.1:1/ipp/pdf', ?, ?)").run(JSON.stringify(caps), new Date().toISOString()).lastInsertRowid);
+    const png = Buffer.from("\x89PNG\r\n\x1A\n0000000000", "latin1").toString("base64");
+    const before = new Set(await readdir(dir));
+
+    expect(await refusal("add_library_document", { printerId: pdfOnly, name: "Map", filename: "map.png", content: png })).toContain("does not accept image/png");
+    const added = await call<{ id: number }>("add_library_document", { printerId: pdfOnly, name: "Map", filename: "map.pdf", content: PDF });
+    expect(await refusal("replace_library_file", { id: added.id, filename: "map.png", content: png })).toContain("does not accept image/png");
+    expect(await call("list_library", { printerId: pdfOnly })).toMatchObject([{ filename: "map.pdf", documentFormat: "application/pdf", problems: [] }]);
+    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(1);
+
+    const grey = { "black-and-white": "true" };
+    expect(await refusal("add_library_document", { printerId, name: "Grey map", filename: "map.png", content: png, options: grey })).toContain("PDFs only");
+    const photo = await call<{ id: number }>("add_library_document", { printerId, name: "Photo", filename: "photo.png", content: png });
+    expect(await refusal("update_library_document", { id: photo.id, options: grey })).toContain("PDFs only");
+    const greyPdf = await call<{ id: number }>("add_library_document", { printerId, name: "Grey notes", filename: "notes.pdf", content: PDF, options: grey });
+    expect(await refusal("replace_library_file", { id: greyPdf.id, filename: "notes.png", content: png })).toContain("PDFs only");
+    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(3);
+  });
+
   it("still answers 2025-era clients, which send no envelope and keep no session", async () => {
     const headers = { "authorization": `Bearer ${userToken}`, "content-type": "application/json", "accept": "application/json, text/event-stream" };
     const message = (body: string) => JSON.parse(body.split("\n").find(line => line.startsWith("data: "))!.slice(6));
@@ -130,6 +188,6 @@ describe("mCP server", () => {
     expect(init.statusCode, init.body).toBe(200);
     expect(message(init.body).result.serverInfo.name).toBe("printmax");
     const list = await app.inject({ method: "POST", url: "/mcp", headers: { ...headers, "mcp-protocol-version": "2025-06-18" }, payload: { jsonrpc: "2.0", id: 2, method: "tools/list" } });
-    expect(message(list.body).result.tools.length).toBe(11);
+    expect(message(list.body).result.tools.length).toBe(15);
   });
 });
