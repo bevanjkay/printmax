@@ -118,7 +118,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const storedDir = opts.storedDir ?? path.join(path.dirname(opts.uploadDir), "stored");
     mkdirSync(storedDir, { recursive: true });
     libraryRoutes(scope, db, { storedDir, uploadDir: opts.uploadDir });
-    mcpRoutes(scope, db, { uploadDir: opts.uploadDir, maxUploadBytes: opts.maxUploadBytes ?? 200 * 1024 * 1024 });
+    mcpRoutes(scope, db, { uploadDir: opts.uploadDir, storedDir, maxUploadBytes: opts.maxUploadBytes ?? 200 * 1024 * 1024 });
   });
 
   await app.register(async (scope) => {
