@@ -140,7 +140,8 @@ describe("mCP server", () => {
     const renamed = await call<{ name: string; overrides: Record<string, unknown> }>("update_library_document", { id: added.id, name: "Weekly rota" });
     expect(renamed).toMatchObject({ name: "Weekly rota", presetId, groupId, overrides: { sides: "two-sided-long-edge" } });
     expect(await call("update_library_document", { id: added.id, presetId: null, groupId: null })).toMatchObject({ name: "Weekly rota", presetId: null, groupId: null });
-    expect(await call("update_library_document", { id: added.id, options: {} })).toMatchObject({ name: "Weekly rota", overrides: {} });
+    const detached = await call<{ overrides: Record<string, unknown>; options: Record<string, unknown> }>("update_library_document", { id: added.id, options: {} });
+    expect([detached.overrides, detached.options]).toEqual([{}, {}]);
 
     const png = Buffer.from("\x89PNG\r\n\x1A\n0000000000", "latin1").toString("base64");
     const replaced = await call<{ filename: string; documentFormat: string }>("replace_library_file", { id: added.id, filename: "rota.png", content: png });
@@ -156,6 +157,28 @@ describe("mCP server", () => {
     expect(await call("delete_library_document", { id: added.id })).toEqual({ deleted: added.id });
     expect(await call("list_library", { search: "rota" })).toEqual([]);
     expect(new Set(await readdir(dir))).toEqual(before);
+  });
+
+  it("refuses a Library file the printer cannot take, keeping the one it has", async () => {
+    const caps = JSON.parse(await readFile(new URL("../fixtures/ippeveprinter.json", import.meta.url), "utf8")) as Record<string, unknown>;
+    caps["document-format-supported"] = { type: "mimeMediaType", values: ["application/pdf"] };
+    const pdfOnly = Number(db.prepare("INSERT INTO printers (name, uri, caps_discovered, created_at) VALUES ('PDF only', 'ipp://127.0.0.1:1/ipp/pdf', ?, ?)").run(JSON.stringify(caps), new Date().toISOString()).lastInsertRowid);
+    const png = Buffer.from("\x89PNG\r\n\x1A\n0000000000", "latin1").toString("base64");
+    const before = new Set(await readdir(dir));
+
+    expect(await refusal("add_library_document", { printerId: pdfOnly, name: "Map", filename: "map.png", content: png })).toContain("does not accept image/png");
+    const added = await call<{ id: number }>("add_library_document", { printerId: pdfOnly, name: "Map", filename: "map.pdf", content: PDF });
+    expect(await refusal("replace_library_file", { id: added.id, filename: "map.png", content: png })).toContain("does not accept image/png");
+    expect(await call("list_library", { printerId: pdfOnly })).toMatchObject([{ filename: "map.pdf", documentFormat: "application/pdf", problems: [] }]);
+    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(1);
+
+    const grey = { "black-and-white": "true" };
+    expect(await refusal("add_library_document", { printerId, name: "Grey map", filename: "map.png", content: png, options: grey })).toContain("PDFs only");
+    const photo = await call<{ id: number }>("add_library_document", { printerId, name: "Photo", filename: "photo.png", content: png });
+    expect(await refusal("update_library_document", { id: photo.id, options: grey })).toContain("PDFs only");
+    const greyPdf = await call<{ id: number }>("add_library_document", { printerId, name: "Grey notes", filename: "notes.pdf", content: PDF, options: grey });
+    expect(await refusal("replace_library_file", { id: greyPdf.id, filename: "notes.png", content: png })).toContain("PDFs only");
+    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(3);
   });
 
   it("still answers 2025-era clients, which send no envelope and keep no session", async () => {

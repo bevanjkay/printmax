@@ -10,8 +10,10 @@ import type { PrinterProfile, PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
 import { copyFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { BLACK_AND_WHITE, toggleIsOn } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
+import { attrValues } from "./ipp/codec.js";
 import { canSeeJob, createJob, requireJob } from "./jobs.js";
 import { getGroup } from "./library-groups.js";
 import { canUsePreset, getPreset } from "./presets.js";
@@ -94,17 +96,25 @@ export function effectiveOptions(db: Db, row: StoredJobRow): Record<string, unkn
   return { ...base, ...parseJson(row.options) };
 }
 
-/** PostScript mode prints PDF only; a stored PNG on such a printer needs attention. */
-function formatProblem(profile: PrinterProfile, format: string): string | null {
-  return profile.mode === "postscript" && format !== "application/pdf" ? "this printer is in PostScript mode, which prints PDF only" : null;
+/** The same bar `createJob` sets, so a stored file is refused now rather than at every print. */
+function formatProblem(profile: PrinterProfile, format: string, options: Record<string, unknown>): string | null {
+  if (profile.mode === "postscript")
+    return format !== "application/pdf" ? "this printer is in PostScript mode, which prints PDF only" : null;
+  const formats = attrValues<string>(profile.caps, "document-format-supported");
+  if (formats.length > 0 && !formats.includes(format) && !formats.includes("application/octet-stream"))
+    return `this printer does not accept ${format}; it supports ${formats.join(", ")}`;
+  return format !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false)
+    ? "Black and white converts PDFs only; turn it off to keep this file"
+    : null;
 }
 
 function problemsFor(db: Db, row: StoredJobRow, printer: PrinterRow | undefined): string[] {
   if (!printer)
     return ["printer no longer exists"];
   const profile = profileFor(printer);
-  const problems = validateJobOptions(effectiveOptions(db, row), profile);
-  const format = formatProblem(profile, row.document_format);
+  const options = effectiveOptions(db, row);
+  const problems = validateJobOptions(options, profile);
+  const format = formatProblem(profile, row.document_format, options);
   return format ? [...problems, format] : problems;
 }
 
@@ -165,8 +175,9 @@ function assertPrintable(db: Db, parsed: Parsed, format: string): void {
   const printer = requirePrinter(db, parsed.printerId);
   const profile = profileFor(printer);
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
-  const errors = validateJobOptions({ ...(preset ? parseJson(preset.options) : {}), ...parsed.options }, profile);
-  const bad = formatProblem(profile, format);
+  const options = { ...(preset ? parseJson(preset.options) : {}), ...parsed.options };
+  const errors = validateJobOptions(options, profile);
+  const bad = formatProblem(profile, format, options);
   if (bad)
     errors.push(bad);
   if (errors.length > 0)
@@ -224,10 +235,12 @@ export function updateStoredJob(db: Db, id: number, input: Omit<StoredJobInput, 
   const parsed = parseInput(db, { ...input, printerId: existing.printer_id }, user);
   assertPrintable(db, parsed, existing.document_format);
   const preset = parsed.presetId === null ? undefined : getPreset(db, parsed.presetId);
+  // Detaching a live preset drops its options; an entry whose preset is already gone keeps the snapshot.
+  const presetOptions = preset ? preset.options : linkedPreset(db, existing) ? "{}" : existing.preset_options;
   db.prepare(`
     UPDATE stored_jobs SET preset_id = ?, name = ?, group_id = ?, scope = ?, owner_id = ?, options = ?, preset_options = ?, updated_at = ?
     WHERE id = ?
-  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.groupId, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), preset ? preset.options : existing.preset_options, now(), id);
+  `).run(preset && (parsed.scope === "user" || preset.scope === "global") ? preset.id : null, parsed.name, parsed.groupId, parsed.scope, parsed.scope === "user" ? (existing.owner_id ?? user.id) : null, JSON.stringify(parsed.options), presetOptions, now(), id);
   return requireStoredJob(db, id);
 }
 
@@ -235,7 +248,7 @@ export async function replaceStoredFile(db: Db, id: number, file: StoredFile, us
   const existing = requireStoredJob(db, id);
   if (!canEditStoredJob(existing, user))
     throw new HttpError(403, "you cannot edit this library entry");
-  const bad = formatProblem(profileFor(requirePrinter(db, existing.printer_id)), file.format);
+  const bad = formatProblem(profileFor(requirePrinter(db, existing.printer_id)), file.format, effectiveOptions(db, existing));
   if (bad)
     throw new HttpError(422, bad);
   db.prepare("UPDATE stored_jobs SET filename = ?, file_path = ?, byte_size = ?, document_format = ?, updated_at = ? WHERE id = ?")
