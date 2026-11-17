@@ -14,7 +14,7 @@ import { BLACK_AND_WHITE, toggleIsOn } from "../shared/attributes.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
 import { attrValues } from "./ipp/codec.js";
-import { canSeeJob, createJob, requireJob } from "./jobs.js";
+import { canSeeJob, createJob, requireJob, sentFormat } from "./jobs.js";
 import { getGroup } from "./library-groups.js";
 import { canUsePreset, getPreset } from "./presets.js";
 import { profileFor, requirePrinter } from "./printers.js";
@@ -101,10 +101,11 @@ function formatProblem(profile: PrinterProfile, format: string, options: Record<
   // In PostScript mode every file is converted, an image by way of a PDF, so nothing is refused.
   if (profile.mode === "postscript")
     return null;
+  const sent = sentFormat(format, options);
   const formats = attrValues<string>(profile.caps, "document-format-supported");
-  if (formats.length > 0 && !formats.includes(format) && !formats.includes("application/octet-stream"))
-    return `this printer does not accept ${format}; it supports ${formats.join(", ")}`;
-  return format !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false)
+  if (formats.length > 0 && !formats.includes(sent) && !formats.includes("application/octet-stream"))
+    return `this printer does not accept ${sent}${sent === format ? "" : ", which a layout is sent as"}; it supports ${formats.join(", ")}`;
+  return sent !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false)
     ? "Black and white converts PDFs only; turn it off to keep this file"
     : null;
 }

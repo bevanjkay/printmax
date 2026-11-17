@@ -1,5 +1,6 @@
 import type { DocumentSize, FormField } from "../shared/types.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { describeLayout, describeRun, isLayoutOption, layoutFrom } from "../shared/layout.js";
 
 export type OptionValues = Record<string, unknown>;
 
@@ -29,6 +30,36 @@ export function pdfPageSize(bytes: Uint8Array): DocumentSize | null {
       largest = { width, height };
   }
   return largest;
+}
+
+/** How many pages a PDF states in the clear; null where its pages are held in compressed object streams. */
+export function pdfPageCount(bytes: Uint8Array): number | null {
+  const pages = new TextDecoder("latin1").decode(bytes).match(/\/Type\s*\/Page(?![A-Za-z])/g)?.length ?? 0;
+  return pages > 0 ? pages : null;
+}
+
+/** What the form can read of a chosen file before it is sent. */
+export interface DocumentInfo {
+  /** The largest page in points; null for an image, or a PDF that keeps its pages out of sight. */
+  size: DocumentSize | null;
+  pages: number | null;
+  /** An image has no size of its own, so a layout always resizes it to its space. */
+  image: boolean;
+  /** An image's proportions, turned as its EXIF orientation says, for sketching it: not a size to print at or check against the paper. */
+  shape?: DocumentSize;
+}
+
+export async function describeDocument(file: File): Promise<DocumentInfo> {
+  if (file.type.startsWith("image/")) {
+    const shape = await createImageBitmap(file).then((bitmap) => {
+      const { width, height } = bitmap;
+      bitmap.close();
+      return { width, height };
+    }).catch(() => undefined);
+    return { size: null, pages: 1, image: true, ...(shape ? { shape } : {}) };
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return { size: pdfPageSize(bytes), pages: pdfPageCount(bytes), image: false };
 }
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -209,11 +240,17 @@ const ON_LABELS = new Set(["on", "true", "yes"]);
  * Plain-English summary of the options that matter, e.g. "2 copies · Double-sided · A4 · Saddle Stitch".
  * Values that mean "off" or "default" are left out, and a switched-on boolean reads as its option's
  * name ("Folding") rather than "On". With `changesOnly`, values equal to the printer's default are
- * also left out, which is what a preset card should show.
+ * also left out, which is what a preset card should show. A layout reads as one phrase rather than
+ * option by option, straight after the copies it multiplies, and is given whenever `names` includes
+ * any of its options. Where every sheet repeats one page, the copies are said as what they come to.
  */
-export function summariseOptions(fields: FormField[], value: OptionValues, names: string[], opts: { changesOnly?: boolean } = {}): string {
+export function summariseOptions(fields: FormField[], value: OptionValues, names: string[], opts: { changesOnly?: boolean; pages?: number | null } = {}): string {
   const parts: string[] = [];
+  const layout = names.some(isLayoutOption) ? layoutFrom(value) : null;
+  let layoutSaid = false;
   for (const name of names) {
+    if (isLayoutOption(name))
+      continue;
     const field = fields.find(f => f.name === name);
     const v = opts.changesOnly ? value[name] : value[name] ?? field?.default;
     if (!field || v === undefined || v === "")
@@ -222,8 +259,17 @@ export function summariseOptions(fields: FormField[], value: OptionValues, names
       continue;
     if (name === "copies") {
       const n = Number(v);
-      if (!opts.changesOnly || n > 1)
+      if (layout?.repeat && !opts.changesOnly) {
+        parts.push(describeRun(n, layout, opts.pages ?? null));
+        layoutSaid = true;
+      }
+      else if (!opts.changesOnly || n > 1) {
         parts.push(`${n} ${n === 1 ? "copy" : "copies"}`);
+      }
+      if (layout && !layoutSaid) {
+        parts.push(describeLayout(layout));
+        layoutSaid = true;
+      }
       continue;
     }
     const values = Array.isArray(v) ? v : [v];
@@ -235,6 +281,8 @@ export function summariseOptions(fields: FormField[], value: OptionValues, names
       parts.push(ON_LABELS.has(key) ? field.label : contextualise(name, label));
     }
   }
+  if (layout && !layoutSaid)
+    parts.unshift(describeLayout(layout));
   return parts.join(" · ");
 }
 

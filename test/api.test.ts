@@ -116,7 +116,11 @@ describe("aPI", () => {
 
     it("validates option maps and echoes them back when nothing needs resolving", async () => {
       const ok = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { sides: "two-sided-long-edge", copies: 2 } } }));
-      expect(ok.json()).toEqual({ errors: [], warnings: [], resolved: { sides: "two-sided-long-edge", copies: 2 } });
+      expect(ok.json()).toEqual({ errors: [], warnings: [], layout: { errors: [], warnings: [], paper: { width: 612, height: 792 } }, resolved: { sides: "two-sided-long-edge", copies: 2 } });
+      // What is wrong with a layout is set apart, so the form can say it beside the layout rather than as the printer's objection.
+      const cramped = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { "layout-columns": 10, "layout-rows": 10, "layout-gap": 25, "sides": "upside-down" } } }));
+      expect(cramped.json().errors).toHaveLength(2);
+      expect(cramped.json().layout.errors).toEqual([expect.stringContaining("leave no room for pages on this paper")]);
       const bad = await app.inject(as(userCookie, { method: "POST", url: `/api/printers/${printerId}/validate`, payload: { options: { copies: 5000 } } }));
       expect(bad.json().errors).toEqual(["\"copies\" must be between 1 and 999"]);
     });

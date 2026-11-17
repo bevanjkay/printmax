@@ -6,8 +6,10 @@
 import type { DocumentSize, ValidationResult } from "../shared/types.js";
 import type { PrinterProfile } from "./printers.js";
 import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, PPD_PREFIX, toggleIsOn } from "../shared/attributes.js";
+import { cellSize, hasRoom, layoutErrors, layoutFrom, sheetFor, turnsPage, withoutLayoutOptions } from "../shared/layout.js";
 import { applyResolvers, checkConstraints, describeViolation } from "./ipp/constraints.js";
 import { validateOptions } from "./ipp/options.js";
+import { paperFor } from "./paper.js";
 import { ppdChoices, validatePpdOptions } from "./ppd/form.js";
 
 function isToggle(value: unknown): boolean {
@@ -18,7 +20,17 @@ export function validateJobOptions(options: Record<string, unknown>, profile: Pr
   const { [BLACK_AND_WHITE]: blackAndWhite, ...rest } = options;
   if (blackAndWhite !== undefined && !isToggle(blackAndWhite))
     return [`"${BLACK_AND_WHITE}" must be true or false`];
-  return validatePrinterOptions(rest, profile);
+  return [...validateLayout(rest, profile), ...validatePrinterOptions(withoutLayoutOptions(rest), profile)];
+}
+
+/** The layout is printmax's own in either mode; the paper only decides whether its spacing leaves room for pages. */
+export function validateLayout(options: Record<string, unknown>, profile: PrinterProfile): string[] {
+  const errors = layoutErrors(options);
+  if (errors.length > 0)
+    return errors;
+  const layout = layoutFrom(options);
+  const paper = layout ? paperFor(profile, options) : null;
+  return layout && paper && !hasRoom(paper, layout) ? ["The layout's margin and gaps leave no room for pages on this paper. Use a smaller gap, or fewer columns and rows."] : [];
 }
 
 function validatePrinterOptions(options: Record<string, unknown>, profile: PrinterProfile): string[] {
@@ -62,7 +74,22 @@ function mm(points: number): number {
  * fits when each of its sides fits a side of the paper, whichever way round they were given.
  */
 export function jobWarnings(options: Record<string, unknown>, profile: PrinterProfile, document: DocumentSize | undefined): string[] {
-  if (profile.mode !== "postscript" || !profile.ppd || !document)
+  if (!document)
+    return [];
+  // Laid out, a page answers to its space on the sheet rather than to the paper.
+  const layout = layoutFrom(options);
+  if (layout) {
+    const paper = paperFor(profile, options);
+    if (layout.fit || !paper)
+      return [];
+    const cell = cellSize(sheetFor(paper, layout, document), layout);
+    const [width, height] = turnsPage(cell, document, layout) ? [document.height, document.width] : [document.width, document.height];
+    // Half a point of slack: paper sizes are whole points, and two A5 pages are a shade over one A4.
+    if (width <= cell.width + 0.5 && height <= cell.height + 0.5)
+      return [];
+    return [`This document's pages are ${mm(document.width)} \u00D7 ${mm(document.height)} mm, larger than the ${mm(cell.width)} \u00D7 ${mm(cell.height)} mm each gets on the sheet. With resize off they print at their own size, so they overlap or run off the sheet.`];
+  }
+  if (profile.mode !== "postscript" || !profile.ppd)
     return [];
   if (toggleIsOn(options, profile.optionDefaults, FIT_TO_PAGE, true))
     return [];
@@ -90,5 +117,7 @@ export function checkOptions(options: Record<string, unknown>, profile: PrinterP
       resolved = options;
     }
   }
-  return { errors, warnings, resolved };
+  // Laid out, every warning is about the fit of pages in their spaces.
+  const layout = { errors: validateLayout(options, profile), warnings: layoutFrom(options) ? warnings : [], paper: paperFor(profile, options) };
+  return { errors, warnings, layout, resolved };
 }

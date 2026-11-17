@@ -163,6 +163,35 @@ and switch the printer to **PostScript via PPD**. From then on:
 It is opt-in per printer and reversible; plain IPP remains the default. The proof for the
 Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/booklet-8-pages.pdf`).
 
+## Page layout (several pages to a sheet)
+
+The Print page's **Layout** section places pages on the sheet before the document is sent, so it
+works the same on every printer and in either mode. One click chooses 2 or 4 pages per sheet; under
+that are the columns and rows, **Repeat each page** (a sheet of one flyer, to cut apart), resizing
+and turning pages to fit, crop marks and page borders, and under **Spacing and order** the margin,
+the gap and the way the pages run. A sketch shows the first sheet as it will print, drawn from the
+same placements the server uses. The sheet is the job's paper, turned on its side when that gives
+the pages more room.
+
+On a printer that lists A3, **Cut from A3** offers ready-made layouts for pieces cut from the
+sheet: A6 cards (8 per sheet, or 4 at full size), business cards (10) and DL (6). Eight A6 or six DL
+fill an A3 exactly, so the margin and gaps to cut along leave them at about 96% and 95% of full
+size, which each choice says; business cards have room to spare and are never resized. With a
+repeated layout a copy is a whole sheet, so **Copies** gains a total beside it and either can be
+typed: asking for 40 works out the sheets.
+
+The options are printmax's own (`layout-columns`, `layout-rows` and so on in the option map), so
+they save into presets and Library documents, the preset editor has the same section, and
+`get_print_options` lists them. A laid-out document is sent as a PDF, so in IPP mode the printer
+has to accept PDF. Worth knowing:
+
+- an image has no size of its own, so in a layout it always fills its space, resize on or off;
+- a page range is counted in the document's pages and applied before the pages are placed;
+- filled-in form fields are drawn into their pages first, less any that are hidden or not set to
+  print; an XFA form, or a PDF with stamps or comments set to print, is refused, because a layout
+  would leave them out;
+- a cropped page is placed by its crop box, as a reader shows it.
+
 ## Library
 
 The Library keeps documents for good, each paired with a preset: the timesheet, the price list,
@@ -249,7 +278,8 @@ with OAuth, which printmax does not offer.
   constraint/resolver evaluation
 - `src/server/` — SQLite (`node:sqlite`), auth, sessions and API tokens, printers, presets, jobs,
   worker, capability diffing, DNS-SD discovery, MCP server, Fastify app
-- `src/shared/` — DTOs, IPP enum tables, and the attribute label/widget table
+- `src/server/pdf/` — image to PDF, and page layout (imposition), both with `pdf-lib`
+- `src/shared/` — DTOs, IPP enum tables, the attribute label/widget table, and the layout options
 - `src/client/` — React front end, served static by the server in production
 - `fixtures/` — verbatim Get-Printer-Attributes dumps used as test data
 

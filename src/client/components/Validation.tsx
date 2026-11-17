@@ -10,14 +10,19 @@ interface Props {
 
 /** Validation problems from the printer's capabilities, with the printer's own resolver as a one-click fix. */
 export function ValidationNotice({ result, value, onApply }: Props) {
-  if (!result || (result.errors.length === 0 && result.warnings.length === 0))
+  if (!result)
     return null;
-  if (result.errors.length === 0) {
+  // What is wrong with the layout is said beside the layout, in its own words, not as the printer's objection.
+  const errors = result.errors.filter(e => !result.layout.errors.includes(e));
+  const warnings = result.warnings.filter(w => !result.layout.warnings.includes(w));
+  if (errors.length === 0 && warnings.length === 0)
+    return null;
+  if (errors.length === 0) {
     return (
       <Notice tone="warning">
         <strong>Check this before you print.</strong>
         <ul>
-          {result.warnings.map(w => <li key={w}>{w}</li>)}
+          {warnings.map(w => <li key={w}>{w}</li>)}
         </ul>
       </Notice>
     );
@@ -27,7 +32,7 @@ export function ValidationNotice({ result, value, onApply }: Props) {
     <Notice tone="error">
       <strong>The printer can't do this combination.</strong>
       <ul>
-        {result.errors.map(e => <li key={e}>{e}</li>)}
+        {errors.map(e => <li key={e}>{e}</li>)}
       </ul>
       {canFix && <Button size="sm" onClick={() => onApply(result.resolved)}>Apply the printer's suggested fix</Button>}
     </Notice>

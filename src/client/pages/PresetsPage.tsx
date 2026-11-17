@@ -2,9 +2,11 @@ import type { FormEvent } from "react";
 import type { FormField, PresetDto, PresetExportItem, PresetImportResult, PrinterDto, ProbeResult, UserDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isLayoutOption } from "../../shared/layout.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconDownload, IconPlus, IconPresets, IconUpload } from "../components/Icons.js";
+import { LayoutSection } from "../components/LayoutOptions.js";
 import { OptionsForm } from "../components/OptionsForm.js";
 import { Badge, Button, EmptyState, Field, Notice, Panel, SkeletonRows } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
@@ -115,7 +117,10 @@ function PresetEditor({ user, printer, fields, preset, onSaved, onCancel }: Edit
           )}
         </div>
         <div className="panel-body">
-          <OptionsForm fields={fields} value={options} onChange={changeOptions} />
+          <OptionsForm fields={fields.filter(f => !isLayoutOption(f.name))} value={options} onChange={changeOptions} />
+          {fields.some(f => isLayoutOption(f.name)) && (
+            <LayoutSection as="accordion" fields={fields} value={options} onChange={changeOptions} problems={validation?.layout ?? null} />
+          )}
           <ValidationNotice result={validation} value={options} onApply={changeOptions} />
           {probe && (probe.accepted
             ? <Notice tone="success">The printer accepted these settings.</Notice>

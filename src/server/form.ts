@@ -8,6 +8,7 @@ import type { IppAttribute, IppAttributes, IppCollection, IppLangString, IppRang
 import type { PrinterProfile } from "./printers.js";
 import { ATTRIBUTE_UI, BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, HIDDEN_ATTRIBUTES, keywordLabel, toggleIsOn } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
+import { LAYOUT, LAYOUT_DEFAULTS, LAYOUT_LIMITS } from "../shared/layout.js";
 import { attrValue, attrValues, isOutOfBand } from "./ipp/codec.js";
 import { mediaColMembers } from "./ipp/options.js";
 import { ppdFields } from "./ppd/form.js";
@@ -131,10 +132,47 @@ function blackAndWhiteField(profile: PrinterProfile): FormField[] {
   }];
 }
 
+const LAYOUT_GROUP = "Layout";
+
+/** printmax places the pages itself, so the layout is the same form on every printer, in either mode. */
+function layoutFields(): FormField[] {
+  const toggle = (name: string, label: string, on: boolean, help: string): FormField => ({
+    name,
+    label,
+    widget: "select",
+    help,
+    group: LAYOUT_GROUP,
+    choices: on ? [{ value: "true", label: "On" }, { value: "false", label: "Off" }] : [{ value: "false", label: "Off" }, { value: "true", label: "On" }],
+    default: String(on),
+  });
+  const number = (name: string, label: string, fallback: number, min: number, max: number, help?: string): FormField =>
+    ({ name, label, widget: "number", group: LAYOUT_GROUP, min, max, default: fallback, ...(help ? { help } : {}) });
+  return [
+    number(LAYOUT.columns, "Columns", LAYOUT_DEFAULTS.columns, 1, LAYOUT_LIMITS.grid, "Pages across each sheet."),
+    number(LAYOUT.rows, "Rows", LAYOUT_DEFAULTS.rows, 1, LAYOUT_LIMITS.grid, "Pages down each sheet."),
+    {
+      name: LAYOUT.order,
+      label: "Page order",
+      widget: "select",
+      help: "Which way the pages run across a sheet.",
+      group: LAYOUT_GROUP,
+      choices: [{ value: "across", label: "Across, then down" }, { value: "down", label: "Down, then across" }],
+      default: LAYOUT_DEFAULTS.order,
+    },
+    toggle(LAYOUT.repeat, "Repeat each page", LAYOUT_DEFAULTS.repeat, "Fills each sheet with one page, to cut apart."),
+    toggle(LAYOUT.fit, "Resize pages to fit", LAYOUT_DEFAULTS.fit, "Scales each page to its space, up or down. Off keeps the size it was made."),
+    toggle(LAYOUT.rotate, "Turn pages to fit", LAYOUT_DEFAULTS.rotate, "Turns a page side-on when that suits its space better."),
+    number(LAYOUT.margin, "Margin (mm)", LAYOUT_DEFAULTS.margin, 0, LAYOUT_LIMITS.space, "Kept clear around the edge of the sheet."),
+    number(LAYOUT.gap, "Gap (mm)", LAYOUT_DEFAULTS.gap, 0, LAYOUT_LIMITS.space, "Between one page and the next."),
+    toggle(LAYOUT.cropMarks, "Crop marks", LAYOUT_DEFAULTS.cropMarks, "Fine lines at each page's corners, to cut along."),
+    toggle(LAYOUT.borders, "Page borders", LAYOUT_DEFAULTS.borders, "A hairline around each page."),
+  ];
+}
+
 /** The form for a printer in its current mode: IPP attributes, or copies plus the PPD's options. */
 export function formFor(profile: PrinterProfile): FormField[] {
   if (profile.mode !== "postscript" || !profile.ppd)
-    return [...buildForm(profile.caps), ...blackAndWhiteField(profile)];
+    return [...buildForm(profile.caps), ...blackAndWhiteField(profile), ...layoutFields()];
   const copies = buildForm(profile.caps).find(f => f.name === "copies") ?? { name: "copies", label: "Copies", widget: "number" as const, min: 1, max: 999, default: 1 };
   const margins: FormField = {
     name: FIT_TO_MARGINS,
@@ -152,7 +190,7 @@ export function formFor(profile: PrinterProfile): FormField[] {
     choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }],
     default: String(toggleIsOn({}, profile.optionDefaults, FIT_TO_PAGE, true)),
   };
-  return [copies, ...blackAndWhiteField(profile), page, margins, ...ppdFields(profile.ppd)];
+  return [copies, ...blackAndWhiteField(profile), page, margins, ...ppdFields(profile.ppd), ...layoutFields()];
 }
 
 /** Initial option map for a printer: every field's default, in option-map form. */

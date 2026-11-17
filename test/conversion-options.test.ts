@@ -4,13 +4,16 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PDFDocument } from "pdf-lib";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, requireJob, submitJob, toDto } from "../src/server/jobs.js";
-import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { conversionTimeoutMs, ghostscriptAvailable, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { layoutFrom, NO_LAYOUT_OPTIONS } from "../src/shared/layout.js";
 import { flatPng } from "./helpers/images.js";
+import { rasterise } from "./helpers/raster.js";
 
 vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), measurePdf: vi.fn() }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
@@ -34,12 +37,12 @@ function convert(...job: Parameters<typeof submitPostScript>) {
 }
 
 /** Submits a job to a printer in IPP mode and returns what went to the printer. */
-async function sendIpp(options: Record<string, unknown>, documentFormat = "application/pdf", optionDefaults: Record<string, unknown> = {}) {
+async function sendIpp(options: Record<string, unknown>, documentFormat = "application/pdf", optionDefaults: Record<string, unknown> = {}, filePath = new URL(import.meta.url).pathname, caps: Record<string, unknown> = {}) {
   const db = openDb(":memory:");
   const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
-  db.prepare("INSERT INTO printers (name, uri, created_at, option_defaults) VALUES (?, ?, ?, ?)")
-    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), JSON.stringify(optionDefaults));
-  const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: new URL(import.meta.url).pathname, byteSize: 10, documentFormat, options });
+  db.prepare("INSERT INTO printers (name, uri, created_at, option_defaults, caps_discovered) VALUES (?, ?, ?, ?, ?)")
+    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), JSON.stringify(optionDefaults), JSON.stringify(caps));
+  const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath, byteSize: 10, documentFormat, options });
   await submitJob(db, job as JobRow);
   return vi.mocked(printJob).mock.calls.at(-1)![1];
 }
@@ -124,7 +127,7 @@ it("sets an image on a page of its own in PostScript mode, always scaled to a sh
     // No paper chosen and fit to paper off: an image has no size of its own to print at, so it still gets the PPD's default sheet.
     expect(await convert({ "fit-to-page": "false" }, {}, {}, image)).toMatchObject({ paper: { width: 595, height: 842 }, fitToPaper: true });
     expect(await convert({ "ppd:PageSize": "A3", "black-and-white": "true" }, {}, {}, image)).toMatchObject({ paper: { width: 842, height: 1191 }, grayscale: true });
-    expect(converted).toEqual(["image.pdf %PDF-", "image.pdf %PDF-"]);
+    expect(converted).toEqual(["document.pdf %PDF-", "document.pdf %PDF-"]);
     // A PPD that lists a paper without its size leaves nothing to scale the image to, which is said rather than guessed.
     const sizeless = ppd.replace(/^\*PaperDimension.*$/gm, "");
     expect(await submitPostScript({}, {}, {}, image, sizeless)).toMatchObject({ state: "failed", error: expect.stringContaining("does not give the size of its paper") });
@@ -132,6 +135,87 @@ it("sets an image on a page of its own in PostScript mode, always scaled to a sh
     await writeFile(image.filePath, "\x89PNG\r\n\x1A\n and nothing after it", "latin1");
     expect(await submitPostScript({}, {}, {}, image)).toMatchObject({ state: "failed", error: expect.stringContaining("could not read the image") });
     expect(vi.mocked(printJob)).toHaveBeenCalledTimes(2);
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("lays a document out on sheets before it is converted or sent, in either mode", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-layout-job-"));
+  const pages = await PDFDocument.create();
+  for (let page = 0; page < 5; page++)
+    pages.addPage([420, 595]).drawRectangle({ x: 0, y: 0, width: 420, height: 595 });
+  const pdf = { filePath: path.join(dir, "notes.pdf"), documentFormat: "application/pdf" };
+  const image = { filePath: path.join(dir, "flyer.png"), documentFormat: "image/png" };
+  await writeFile(pdf.filePath, await pages.save());
+  await writeFile(image.filePath, flatPng(40, 30, [255, 0, 0]));
+  const sheets = async (document: Uint8Array) => (await PDFDocument.load(document)).getPages().map(page => page.getSize());
+  let converted: Array<{ width: number; height: number }> = [];
+  vi.mocked(pdfToPostScript).mockImplementation(async (file) => {
+    converted = await sheets(await readFile(file));
+    return Buffer.from("%!PS-Adobe-3.0\n%%Page: 1 1\nshowpage\n");
+  });
+  const twoUp = { "layout-columns": 2, "layout-rows": 1 };
+  try {
+    // PostScript mode: the sheets are cut to the PPD's paper, chosen or default, and that paper is forced.
+    expect(await convert(twoUp, {}, {}, pdf)).toMatchObject({ paper: { width: 595, height: 842 } });
+    expect(converted).toEqual(Array.from({ length: 3 }).fill({ width: 842, height: 595 }));
+    await convert({ ...twoUp, "ppd:PageSize": "A3", "layout-repeat": "true" }, {}, {}, image);
+    expect(converted).toEqual([{ width: 1191, height: 842 }]);
+
+    // IPP mode: the printer is sent the sheets as a PDF, and never hears of the layout options.
+    const media = { "media-default": { type: "keyword", values: ["iso_a4_210x297mm"] } };
+    const sent = await sendIpp({ ...twoUp, copies: 2 }, pdf.documentFormat, {}, pdf.filePath, media);
+    expect(sent.documentFormat).toBe("application/pdf");
+    expect(Object.keys(sent.jobAttributes ?? {})).toEqual(["copies"]);
+    expect(await sheets(sent.data)).toHaveLength(3);
+    expect((await sheets(sent.data))[0]!.width).toBeCloseTo(841.89, 1);
+    // A page range is counted in the document's pages, so it is applied here and never reaches the printer, which would count sheets.
+    const ranged = await sendIpp({ ...twoUp, "page-ranges": "1-2" }, pdf.documentFormat, {}, pdf.filePath, media);
+    expect(await sheets(ranged.data)).toHaveLength(1);
+    expect(Object.keys(ranged.jobAttributes ?? {})).toEqual([]);
+    expect(Object.keys((await sendIpp({ "page-ranges": "1-2" }, pdf.documentFormat, {}, pdf.filePath, media)).jobAttributes ?? {})).toEqual(["page-ranges"]);
+    // An image becomes a PDF on the way, which black and white can then convert like any other.
+    const flyer = await sendIpp({ ...twoUp, "black-and-white": "true" }, image.documentFormat, {}, image.filePath);
+    expect(flyer.documentFormat).toBe("application/pdf");
+    expect(String(flyer.data)).toBe("%PDF-1.7 grey");
+    // A printer that reads no PDF cannot be sent one, so the job is refused rather than failed later.
+    const imagesOnly = { "document-format-supported": { type: "mimeMediaType", values: ["image/jpeg", "image/png"] } };
+    await expect(sendIpp(twoUp, image.documentFormat, {}, image.filePath, imagesOnly)).rejects.toThrow("does not accept application/pdf, which a layout is sent as");
+    expect((await sendIpp({}, image.documentFormat, {}, image.filePath, imagesOnly)).documentFormat).toBe("image/png");
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("needs one page per sheet said in full to undo a preset's layout, since a job's options are laid over its preset's", () => {
+  const db = openDb(":memory:");
+  const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
+  const stamp = new Date().toISOString();
+  db.prepare("INSERT INTO printers (name, uri, created_at) VALUES (?, ?, ?)").run("Fixture", "ipp://127.0.0.1:1/ipp/print", stamp);
+  db.prepare("INSERT INTO presets (printer_id, name, scope, options, created_at, updated_at) VALUES (1, 'Handout', 'global', ?, ?, ?)")
+    .run(JSON.stringify({ "layout-columns": 2, "layout-rows": 2, "layout-crop-marks": "true" }), stamp, stamp);
+  const queued = (options: Record<string, unknown>) => JSON.parse(createJob(db, { printerId: 1, presetId: 1, user, filename: "notes.pdf", filePath: "/unused/notes.pdf", byteSize: 10, documentFormat: "application/pdf", options }).options_final) as Record<string, unknown>;
+  // Left out, the preset's own layout comes back, whatever the form was showing.
+  expect(layoutFrom(queued({}))).toMatchObject({ columns: 2, rows: 2, cropMarks: true });
+  expect(layoutFrom(queued(NO_LAYOUT_OPTIONS))).toBeNull();
+});
+
+it.skipIf(!(await ghostscriptAvailable()))("resizes an image to its space in a layout even with resize off, as it has no size of its own to keep", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-layout-image-"));
+  const file = path.join(dir, "card.png");
+  await writeFile(file, flatPng(40, 30, [255, 0, 0]));
+  try {
+    const media = { "media-default": { type: "keyword", values: ["iso_a4_210x297mm"] } };
+    const sent = await sendIpp({ "layout-columns": 2, "layout-fit": "false", "layout-margin": 0, "layout-gap": 0 }, "image/png", {}, file, media);
+    const sheet = await rasterise(sent.data);
+    // At a point a pixel the image would be a 40 pt speck; resized it fills half the sideways sheet's width.
+    expect([sheet.width, sheet.height]).toEqual([842, 595]);
+    expect(sheet.at(40, 297)).toEqual([255, 0, 0]);
+    expect(sheet.at(380, 297)).toEqual([255, 0, 0]);
+    expect(sheet.at(630, 297)).toEqual([255, 255, 255]);
   }
   finally {
     await rm(dir, { recursive: true, force: true });

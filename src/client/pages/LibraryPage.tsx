@@ -3,6 +3,7 @@ import type { FormField, LibraryGroupDto, PresetDto, PrinterDto, StoredJobDto, U
 import type { SectionToggles } from "../sections.js";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { BLACK_AND_WHITE, isPrimaryOption } from "../../shared/attributes.js";
+import { isLayoutOption } from "../../shared/layout.js";
 import { api } from "../api.js";
 import { ConfirmButton } from "../components/ConfirmButton.js";
 import { IconChevron, IconLibrary, IconPlus, IconSearch, IconUpload } from "../components/Icons.js";
@@ -425,7 +426,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
     );
   }
 
-  const primaryNames = fields.filter(f => isPrimaryOption(f.name)).map(f => f.name);
+  const primaryNames = fields.filter(f => isPrimaryOption(f.name) || isLayoutOption(f.name)).map(f => f.name);
   const trimmed = query.trim().toLowerCase();
   const searching = trimmed !== "";
   const shown = (entries ?? []).filter(e => !searching || matches(e, trimmed));
