@@ -178,7 +178,12 @@ describe("mCP server", () => {
     expect(await refusal("update_library_document", { id: photo.id, options: grey })).toContain("PDFs only");
     const greyPdf = await call<{ id: number }>("add_library_document", { printerId, name: "Grey notes", filename: "notes.pdf", content: PDF, options: grey });
     expect(await refusal("replace_library_file", { id: greyPdf.id, filename: "notes.png", content: png })).toContain("PDFs only");
-    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(3);
+
+    // A printer in PostScript mode converts whatever it is given, so it keeps an image, greyscale and all.
+    const ppd = await readFile(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
+    const postScript = Number(db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode) VALUES ('Booklets', 'ipp://127.0.0.1:1/ipp/ps', ?, ?, 'postscript')").run(new Date().toISOString(), ppd).lastInsertRowid);
+    expect(await call("add_library_document", { printerId: postScript, name: "Grey photo", filename: "photo.png", content: png, options: grey })).toMatchObject({ documentFormat: "image/png", problems: [] });
+    expect((await readdir(dir)).filter(f => !before.has(f))).toHaveLength(4);
   });
 
   it("still answers 2025-era clients, which send no envelope and keep no session", async () => {

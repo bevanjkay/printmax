@@ -587,7 +587,7 @@ export function LibraryPage({ user, printers, onPrinted }: Props) {
                                   ? (
                                       <PrintCopies
                                         entry={entry}
-                                        blackAndWhiteField={entry.documentFormat === "application/pdf" ? fields.find(f => f.name === BLACK_AND_WHITE) : undefined}
+                                        blackAndWhiteField={entry.documentFormat === "application/pdf" || printer.printMode === "postscript" ? fields.find(f => f.name === BLACK_AND_WHITE) : undefined}
                                         onDone={() => {
                                           setPrinting(null);
                                           setPrinted(`${entry.name} is queued. Watch it under Jobs.`);

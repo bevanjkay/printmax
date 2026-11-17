@@ -98,8 +98,9 @@ export function effectiveOptions(db: Db, row: StoredJobRow): Record<string, unkn
 
 /** The same bar `createJob` sets, so a stored file is refused now rather than at every print. */
 function formatProblem(profile: PrinterProfile, format: string, options: Record<string, unknown>): string | null {
+  // In PostScript mode every file is converted, an image by way of a PDF, so nothing is refused.
   if (profile.mode === "postscript")
-    return format !== "application/pdf" ? "this printer is in PostScript mode, which prints PDF only" : null;
+    return null;
   const formats = attrValues<string>(profile.caps, "document-format-supported");
   if (formats.length > 0 && !formats.includes(format) && !formats.includes("application/octet-stream"))
     return `this printer does not accept ${format}; it supports ${formats.join(", ")}`;

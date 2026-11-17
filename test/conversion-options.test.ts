@@ -1,25 +1,36 @@
 import type { ConversionLimits, JobRow } from "../src/server/jobs.js";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, requireJob, submitJob, toDto } from "../src/server/jobs.js";
 import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { flatPng } from "./helpers/images.js";
 
 vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), measurePdf: vi.fn() }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
 
 const ppd = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
 
-function convert(options: Record<string, unknown>, optionDefaults: Record<string, unknown> = {}, limits: ConversionLimits = {}) {
+/** Submits a job to a printer in PostScript mode and returns it as the attempt left it. */
+async function submitPostScript(options: Record<string, unknown>, optionDefaults: Record<string, unknown> = {}, limits: ConversionLimits = {}, document = { filePath: "/unused/test.pdf", documentFormat: "application/pdf" }, driver = ppd) {
   const db = openDb(":memory:");
   const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
   db.prepare("INSERT INTO printers (name, uri, created_at, ppd, print_mode, option_defaults) VALUES (?, ?, ?, ?, ?, ?)")
-    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), ppd, "postscript", JSON.stringify(optionDefaults));
-  const job = createJob(db, { printerId: 1, user, filename: "test.pdf", filePath: "/unused/test.pdf", byteSize: 10, documentFormat: "application/pdf", options });
-  return submitJob(db, job as JobRow, limits).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
+    .run("Fixture", "ipp://127.0.0.1:1/ipp/print", new Date().toISOString(), driver, "postscript", JSON.stringify(optionDefaults));
+  const job = createJob(db, { printerId: 1, user, filename: path.basename(document.filePath), byteSize: 10, options, ...document });
+  await submitJob(db, job as JobRow, limits);
+  return requireJob(db, job.id);
+}
+
+/** What the converter was asked for when a job went to a printer in PostScript mode. */
+function convert(...job: Parameters<typeof submitPostScript>) {
+  return submitPostScript(...job).then(() => vi.mocked(pdfToPostScript).mock.calls.at(-1)![1]!);
 }
 
 /** Submits a job to a printer in IPP mode and returns what went to the printer. */
@@ -98,6 +109,33 @@ it("passes the document's page size only when its pages are the ones being place
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "false" })).toMatchObject({ documentPage: { width: 842, height: 595 } });
   // Fitted, every page is scaled to the sheet, so its own size decides nothing.
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).not.toHaveProperty("documentPage");
+});
+
+it("sets an image on a page of its own in PostScript mode, always scaled to a sheet", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-image-job-"));
+  const image = { filePath: path.join(dir, "photo.png"), documentFormat: "image/png" };
+  await writeFile(image.filePath, flatPng(40, 30, [255, 0, 0]));
+  const converted: string[] = [];
+  vi.mocked(pdfToPostScript).mockImplementation(async (file) => {
+    converted.push(`${path.basename(file)} ${(await readFile(file)).subarray(0, 5).toString("latin1")}`);
+    return Buffer.from("%!PS-Adobe-3.0\n%%Page: 1 1\nshowpage\n");
+  });
+  try {
+    // No paper chosen and fit to paper off: an image has no size of its own to print at, so it still gets the PPD's default sheet.
+    expect(await convert({ "fit-to-page": "false" }, {}, {}, image)).toMatchObject({ paper: { width: 595, height: 842 }, fitToPaper: true });
+    expect(await convert({ "ppd:PageSize": "A3", "black-and-white": "true" }, {}, {}, image)).toMatchObject({ paper: { width: 842, height: 1191 }, grayscale: true });
+    expect(converted).toEqual(["image.pdf %PDF-", "image.pdf %PDF-"]);
+    // A PPD that lists a paper without its size leaves nothing to scale the image to, which is said rather than guessed.
+    const sizeless = ppd.replace(/^\*PaperDimension.*$/gm, "");
+    expect(await submitPostScript({}, {}, {}, image, sizeless)).toMatchObject({ state: "failed", error: expect.stringContaining("does not give the size of its paper") });
+    // A file that only starts like a PNG fails the job in words, and nothing reaches the printer.
+    await writeFile(image.filePath, "\x89PNG\r\n\x1A\n and nothing after it", "latin1");
+    expect(await submitPostScript({}, {}, {}, image)).toMatchObject({ state: "failed", error: expect.stringContaining("could not read the image") });
+    expect(vi.mocked(printJob)).toHaveBeenCalledTimes(2);
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 it("gives a long document time in proportion to its pages, since ps2write may rasterise every one", async () => {
