@@ -354,14 +354,50 @@ details.disclosure > summary { max-width: 100%; }
 details.disclosure > summary .disclosure-note { min-width: 0; font-weight: 400; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 details.disclosure + details.disclosure { margin-top: 4px; }
 .presets-hint { margin-top: 8px; }
-.layout-options { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 20px; align-items: start; }
-.sheet-frame { display: grid; place-items: center; width: 136px; height: 136px; margin-bottom: 14px; border-radius: var(--r-md); background: var(--surface-2); }
-.sheet-sketch { display: grid; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--surface); box-shadow: var(--shadow-sm); transition: width var(--dur) var(--ease), height var(--dur) var(--ease); }
-.sheet-sketch span { display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; border-radius: 1px; background: var(--accent-soft); color: var(--accent); font-size: var(--fs-xs); line-height: 1; font-variant-numeric: tabular-nums; }
-.sheet-sketch.bordered span { box-shadow: inset 0 0 0 1px var(--accent); }
+.notice + .presets-hint { margin-top: 12px; }
+.disclosure-flag { font-weight: 500; white-space: nowrap; }
+
+/* ---------- layout ---------- */
+
+.layout-choices .field { margin-bottom: 12px; }
+.layout-problems { margin: 4px 0 14px; }
+details.disclosure + .layout-problems { margin-top: 8px; }
+.layout-detail { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 20px; align-items: start; }
+.sheet-frame { --paper: var(--surface); display: grid; place-items: center; width: 136px; height: 136px; margin-bottom: 14px; border-radius: var(--r-md); background: var(--surface-2); }
+.sheet-sketch { display: block; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--paper); box-shadow: var(--shadow-sm); transition: width var(--dur) var(--ease), height var(--dur) var(--ease); }
+/* Named apart from the app's own .page: CSS sizes an SVG rect as readily as a div. */
+.sheet-page { fill: var(--accent-soft); }
+.sheet-sketch text { fill: var(--accent); font-family: var(--font); font-variant-numeric: tabular-nums; }
+.sheet-sketch.bordered .sheet-page { stroke: var(--accent); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.sheet-mark { fill: none; stroke: var(--text-2); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.sheet-sketch.warned .sheet-page { fill: var(--warning-soft); }
+.sheet-sketch.warned text { fill: var(--warning); }
+.sheet-sketch.failed { border-color: var(--danger-border); background: var(--danger-soft); }
+@media (prefers-color-scheme: dark) {
+  /* Paper has to sit lighter than what it lies on, or it reads as a hole. */
+  .sheet-frame { --paper: var(--surface-3); }
+}
+.grid-pair { display: flex; align-items: flex-end; gap: 10px; }
+.grid-pair .field { width: 96px; }
+.grid-pair .times { display: grid; place-items: center; height: 32px; margin-bottom: 14px; color: var(--text-3); }
+.check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px 24px; margin: 2px 0 14px; }
+.check-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 9px; align-items: start; font-size: var(--fs-sm); cursor: pointer; }
+.check-row input { margin-top: 2px; }
+.check-row > span { display: flex; flex-direction: column; gap: 1px; }
+.check-row.disabled { cursor: not-allowed; }
+.run { display: flex; align-items: flex-start; gap: 0 12px; flex-wrap: wrap; }
+.run .form-grid { display: block; }
+.run .field { margin-bottom: 6px; }
+.run-equals { margin-top: 31px; color: var(--text-3); }
+.run-hint { margin: 0 0 14px; }
 @media (max-width: 880px) {
-  .layout-options { grid-template-columns: minmax(0, 1fr); }
+  /* Seven choices one under another push the sheet they describe off the screen. */
+  .layout-choices .preset-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .layout-detail { grid-template-columns: minmax(0, 1fr); }
   .sheet-frame { width: 100%; }
+  .check-row { padding: 4px 0; }
+  details.disclosure > summary { min-height: 44px; }
+  .run-equals { margin-top: 35px; }
 }
 /* ---------- accordion ---------- */
 

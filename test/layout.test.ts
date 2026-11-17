@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { degrees, PDFDocument, rgb } from "pdf-lib";
+import { degrees, PDFDocument, PDFName, rgb } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { summariseOptions } from "../src/client/util.js";
 import { formFor } from "../src/server/form.js";
@@ -13,7 +13,7 @@ import { ghostscriptAvailable, measurePdf, pdfToPostScript } from "../src/server
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
 import { isOwnOption, isPrimaryOption, mediaSize, paperChoice, withoutOwnOptions } from "../src/shared/attributes.js";
-import { cellPosition, describeLayout, describeTemplate, LAYOUT_DEFAULTS, LAYOUT_TEMPLATES, layoutErrors, layoutFrom, layoutOptions, pageInCell, pageScale, sheetCount, sheetFor } from "../src/shared/layout.js";
+import { arrangementOptions, cellPosition, describeLayout, describeRun, describeTemplate, LAYOUT_DEFAULTS, LAYOUT_TEMPLATES, layoutErrors, layoutFrom, layoutOptions, pageInCell, PAGES_PER_SHEET, pageScale, placePages, readLayout, sameArrangement, sheetCount, sheetFor } from "../src/shared/layout.js";
 import { rasterise } from "./helpers/raster.js";
 
 const ppd = parsePpd(readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8"));
@@ -109,6 +109,29 @@ describe("layout options", () => {
     expect(paperFor({ ...ipp, caps: {} }, {})).toBeNull();
   });
 
+  it("says what a run of copies comes to when every sheet repeats one page", () => {
+    expect(describeRun(5, layout({ columns: 2, rows: 4, repeat: true }), 1)).toBe("40 in total (5 copies × 8 per sheet)");
+    expect(describeRun(1, layout({ repeat: true }), null)).toBe("4 of each page (1 copy × 4 per sheet)");
+    expect(describeRun(3, layout({ repeat: true }), 2)).toBe("12 of each page (3 copies × 4 per sheet)");
+  });
+
+  it("places a sheet's pages for the sketch exactly as it does for the printer", () => {
+    const sideways = { width: 842, height: 595 };
+    const placed = placePages(sideways, layout({ columns: 2, rows: 1, margin: 0, gap: 0 }), [A4, A4, A4], 1);
+    // The second sheet of a three-page 2-up holds the last page alone, at half the sheet's width.
+    expect(placed).toHaveLength(1);
+    expect(placed[0]).toMatchObject({ page: 2, turned: false });
+    expect(placed[0]!.x).toBeCloseTo(0, 0);
+    expect(placed[0]!.width).toBeCloseTo(420.5, 0);
+    expect(placed[0]!.scale).toBeCloseTo(595 / 842, 3);
+    // At their own size, business cards keep 90 x 55 mm and the block of them is centred.
+    const card = { width: 255.12, height: 155.91 };
+    const cards = placePages({ width: 841.89, height: 1190.55 }, LAYOUT_TEMPLATES.find(t => t.id === "business-cards")!.layout, [card], 0);
+    expect(cards).toHaveLength(10);
+    expect(cards.every(c => c.scale === 1 && Math.abs(c.width - 255.12) < 0.01)).toBe(true);
+    expect(cards[0]!.x).toBeCloseTo((841.89 - (255.12 * 2 + 2 * 72 / 25.4)) / 2, 1);
+  });
+
   it("describes a layout in a phrase for a summary line", () => {
     expect(describeLayout(layout())).toBe("4 pages per sheet");
     expect(describeLayout(layout({ repeat: true, cropMarks: true }))).toBe("4 of each page per sheet with crop marks");
@@ -125,7 +148,7 @@ describe("ready-made layouts", () => {
     // Eight A6 or six DL fill an A3 exactly, so a margin and gaps to cut along cost them a few percent.
     expect(LAYOUT_TEMPLATES.map(t => `${t.name}: ${describeTemplate(t)}`)).toEqual([
       "A6 cards: 8 per A3, at 96% of full size",
-      "A6 cards, full size: 4 per A3, full size",
+      "A6 cards, full size: 4 per A3",
       "Business cards: 10 per A3, full size",
       "DL: 6 per A3, at 95% of full size",
     ]);
@@ -144,6 +167,18 @@ describe("ready-made layouts", () => {
     }
     // Resized to fit, a business card would be blown up to fill its space, which is why that one is not.
     expect(pageScale(a3, { ...template("business-cards").layout, fit: true }, piece("business-cards"))).toBeGreaterThan(1.4);
+  });
+
+  it("arranges the pages and leaves the user's crop marks and borders alone", () => {
+    const marked = { "layout-crop-marks": "true", "layout-borders": "true", "layout-margin": 12 };
+    for (const { layout: grid } of [...LAYOUT_TEMPLATES, ...PAGES_PER_SHEET]) {
+      const chosen = readLayout({ ...marked, ...arrangementOptions(grid) });
+      expect(chosen).toMatchObject({ cropMarks: true, borders: true, margin: grid.margin });
+      // Marks added afterwards do not make it a different arrangement, so its button stays pressed.
+      expect(sameArrangement(chosen, grid)).toBe(true);
+    }
+    expect(sameArrangement(readLayout({ "layout-columns": 2, "layout-rows": 2 }), PAGES_PER_SHEET.find(c => c.id === "four")!.layout)).toBe(true);
+    expect(sameArrangement(readLayout({ "layout-columns": 2, "layout-rows": 3 }), PAGES_PER_SHEET.find(c => c.id === "four")!.layout)).toBe(false);
   });
 
   it("leaves crop marks and borders off until they are asked for, ready-made or not", () => {
@@ -180,7 +215,13 @@ describe("layout in the form and in validation", () => {
     const fields = formFor(ipp);
     const names = ["copies", ...fields.filter(f => f.name.startsWith("layout-")).map(f => f.name)];
     const options = { "copies": 2, "layout-columns": 2, "layout-rows": 2, "layout-repeat": "true", "layout-margin": 5 };
-    expect(summariseOptions(fields, options, names)).toBe("2 copies · 4 of each page per sheet");
+    // Repeated, "copies" is said as what it comes to, which is the number people are after.
+    expect(summariseOptions(fields, options, names)).toBe("8 of each page (2 copies × 4 per sheet)");
+    expect(summariseOptions(fields, options, names, { pages: 1 })).toBe("8 in total (2 copies × 4 per sheet)");
+    expect(summariseOptions(fields, { ...options, "layout-repeat": "false" }, names)).toBe("2 copies · 4 pages per sheet");
+    // A preset card shows what the preset changes, so the layout stands without a count.
+    expect(summariseOptions(fields, options, names, { changesOnly: true })).toBe("2 copies · 4 of each page per sheet");
+    expect(summariseOptions(fields, { "layout-columns": 2 }, names, { changesOnly: true })).toBe("2 pages per sheet");
     expect(summariseOptions(fields, options, ["copies"])).toBe("2 copies");
     expect(summariseOptions(fields, { copies: 2 }, names, { changesOnly: true })).toBe("2 copies");
   });
@@ -230,6 +271,38 @@ describe("imposing a PDF", () => {
     pdf.addPage([A5.width, A5.height]);
     pdf.addPage([A5.width, A5.height]).drawRectangle({ x: 0, y: 0, ...A5, color: rgb(1, 0, 0) });
     expect(await sheetSizes(await imposePdf(await pdf.save(), layout({ columns: 2, rows: 1 }), A4))).toHaveLength(1);
+  });
+
+  it("places only the pages a range asks for, counted in the document's pages rather than in sheets", async () => {
+    const pages = await colouredPages([RED, GREEN, BLUE, BLACK, RED, GREEN, BLUE, BLACK]);
+    expect(await sheetSizes(await imposePdf(pages, layout({ columns: 2, rows: 1 }), A4, [{ min: 1, max: 2 }]))).toHaveLength(1);
+    expect(await sheetSizes(await imposePdf(pages, layout({ columns: 2, rows: 1 }), A4, [{ min: 1, max: 2 }, { min: 6, max: 8 }]))).toHaveLength(3);
+    await expect(imposePdf(pages, layout(), A4, [{ min: 20, max: 30 }])).rejects.toThrow("page range leaves no pages");
+  });
+
+  it("refuses a PDF whose printing annotations a layout would leave out, but not one with only links", async () => {
+    const annotated = async (subtype: string, flags: number) => {
+      const pdf = await PDFDocument.create();
+      const page = pdf.addPage([A5.width, A5.height]);
+      page.drawRectangle({ x: 0, y: 0, ...A5, color: rgb(1, 0, 0) });
+      const annotation = pdf.context.obj({ Type: "Annot", Subtype: subtype, Rect: [50, 50, 200, 100], F: flags });
+      page.node.set(PDFName.of("Annots"), pdf.context.obj([pdf.context.register(annotation)]));
+      return pdf.save();
+    };
+    await expect(imposePdf(await annotated("Stamp", 4), layout(), A4)).rejects.toThrow("stamps or comments set to print");
+    expect(await sheetSizes(await imposePdf(await annotated("Link", 4), layout(), A4))).toHaveLength(1);
+    // A comment that is not set to print would not have printed anyway.
+    expect(await sheetSizes(await imposePdf(await annotated("Text", 0), layout(), A4))).toHaveLength(1);
+  });
+
+  it("refuses an XFA-only form, whose page is a placeholder for content a layout cannot reach", async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage([A5.width, A5.height]).drawRectangle({ x: 0, y: 0, ...A5, color: rgb(1, 0, 0) });
+    pdf.catalog.set(PDFName.of("AcroForm"), pdf.context.obj({ Fields: [], XFA: pdf.context.obj([]) }));
+    await expect(imposePdf(await pdf.save(), layout(), A4)).rejects.toThrow("XFA form");
+    // An empty AcroForm with no XFA is just a PDF.
+    pdf.catalog.set(PDFName.of("AcroForm"), pdf.context.obj({ Fields: [] }));
+    expect(await sheetSizes(await imposePdf(await pdf.save(), layout(), A4))).toHaveLength(1);
   });
 
   it("refuses a document it cannot read in words, and a layout with no room for pages", async () => {
@@ -326,6 +399,52 @@ describe.skipIf(!(await ghostscriptAvailable()))("what an imposed sheet draws", 
     const top = (1190.55 + (card.height * 5 + 4 * 2 * 72 / 25.4)) / 2;
     expect(sheet.at(421 - card.width / 2, top - 4)).toEqual(RED);
     expect(sheet.at(421 - card.width / 2, top + 20)).toEqual(WHITE);
+  });
+
+  it("draws what was typed into a form's fields, which a page embedded as a form would otherwise leave behind", async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([A5.width, A5.height]);
+    const field = pdf.getForm().createTextField("name");
+    field.setText("MMMMMM");
+    field.addToPage(page, { x: 60, y: 250, width: 300, height: 100, borderWidth: 0 });
+    const sheet = await rasterise(await imposePdf(await pdf.save(), layout({ columns: 1, rows: 1, fit: false, margin: 0, gap: 0, borders: true }), A5));
+    // The letters fill the field, so somewhere across its middle there is ink.
+    const inked = Array.from({ length: 280 }, (_, x) => sheet.at(70 + x, 300)).filter(([r]) => r < 128).length;
+    expect(inked).toBeGreaterThan(20);
+  });
+
+  it("leaves a hidden field, or one not set to print, off the sheet as it would be off the page", async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([A5.width, A5.height]);
+    const form = pdf.getForm();
+    const fill = (name: string, y: number) => {
+      const field = form.createTextField(name);
+      field.setText("MMMMMM");
+      field.addToPage(page, { x: 60, y, width: 300, height: 100, borderWidth: 0 });
+      return field.acroField.getWidgets()[0]!;
+    };
+    fill("printed", 450);
+    fill("hidden", 250).setFlagTo(2, true);
+    fill("screen-only", 50).setFlagTo(4, false);
+    const sheet = await rasterise(await imposePdf(await pdf.save(), layout({ columns: 1, rows: 1, fit: false, margin: 0, gap: 0, borders: true }), A5));
+    const inked = (y: number) => Array.from({ length: 280 }, (_, x) => sheet.at(70 + x, y)).filter(([r]) => r < 128).length;
+    expect(inked(500)).toBeGreaterThan(20);
+    expect(inked(300)).toBe(0);
+    expect(inked(100)).toBe(0);
+  });
+
+  it("places a cropped page by the box a reader shows, not by what lies outside it", async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([A5.width, A5.height]);
+    page.drawRectangle({ x: 0, y: 0, ...A5, color: rgb(0, 1, 0) });
+    page.drawRectangle({ x: 110, y: 147.5, width: 200, height: 300, color: rgb(1, 0, 0) });
+    page.setCropBox(110, 147.5, 200, 300);
+    const sheet = await rasterise(await imposePdf(await pdf.save(), layout({ columns: 1, rows: 1, margin: 0, gap: 0, borders: true }), A5));
+    // The red crop fills the sheet's height; none of the green around it is drawn.
+    expect(sheet.at(210, 20)).toEqual(RED);
+    expect(sheet.at(210, 575)).toEqual(RED);
+    expect(sheet.at(5, 297)).toEqual(WHITE);
+    expect(sheet.at(415, 297)).toEqual(WHITE);
   });
 
   it("marks where to cut and rules a border around each page when asked", async () => {

@@ -3,6 +3,7 @@ import type { JobDto } from "../shared/types.js";
 import type { UserRow } from "./auth.js";
 import type { Db } from "./db.js";
 import type { IppAttributes } from "./ipp/codec.js";
+import type { PageRange } from "./pdf/imposition.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
@@ -260,6 +261,8 @@ export async function submitJob(db: Db, job: JobRow, limits: ConversionLimits = 
 interface Sheets {
   layout: Layout;
   paper: Size | null;
+  /** The pages of the document to place, where the job asks for only some. */
+  ranges?: PageRange[];
 }
 
 /**
@@ -274,7 +277,9 @@ async function withPdf<T>(job: JobRow, sheets: Sheets | null, work: (pdfPath: st
   try {
     const pdf = image ? await imageToPdf(job.file_path!, job.document_format) : await readFile(job.file_path!);
     const pdfPath = path.join(dir, "document.pdf");
-    await writeFile(pdfPath, sheets ? await imposePdf(pdf, sheets.layout, sheets.paper) : pdf);
+    // An image has no size of its own to keep, so in a layout it is resized to its space whatever the layout says.
+    const layout = sheets && image ? { ...sheets.layout, fit: true } : sheets?.layout;
+    await writeFile(pdfPath, sheets && layout ? await imposePdf(pdf, layout, sheets.paper, sheets.ranges) : pdf);
     return await work(pdfPath);
   }
   finally {
@@ -287,7 +292,11 @@ async function ippDocument(job: JobRow, options: Record<string, unknown>, graysc
   const jobAttributes = buildJobAttributes(withoutOwnOptions(options), caps);
   if (!sheets && !grayscale)
     return { data: await readFile(job.file_path!), documentFormat: job.document_format, jobAttributes };
-  const data = await withPdf(job, sheets, pdfPath => grayscale ? pdfToGrayscalePdf(pdfPath, { signal }) : readFile(pdfPath));
+  // The printer would count a page range in sheets, so with a layout the pages are picked here, before they are placed.
+  const ranges = sheets ? jobAttributes["page-ranges"]?.values as PageRange[] | undefined : undefined;
+  if (ranges)
+    delete jobAttributes["page-ranges"];
+  const data = await withPdf(job, sheets && ranges ? { ...sheets, ranges } : sheets, pdfPath => grayscale ? pdfToGrayscalePdf(pdfPath, { signal }) : readFile(pdfPath));
   return { data, documentFormat: "application/pdf", jobAttributes };
 }
 

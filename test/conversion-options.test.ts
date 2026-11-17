@@ -10,8 +10,10 @@ import { createUser } from "../src/server/auth.js";
 import { openDb } from "../src/server/db.js";
 import { printJob } from "../src/server/ipp/operations.js";
 import { createJob, requireJob, submitJob, toDto } from "../src/server/jobs.js";
-import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { conversionTimeoutMs, ghostscriptAvailable, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
+import { layoutFrom, NO_LAYOUT_OPTIONS } from "../src/shared/layout.js";
 import { flatPng } from "./helpers/images.js";
+import { rasterise } from "./helpers/raster.js";
 
 vi.mock("../src/server/ppd/ghostscript.js", async original => ({ ...await original<typeof import("../src/server/ppd/ghostscript.js")>(), pdfToPostScript: vi.fn(), pdfToGrayscalePdf: vi.fn(), measurePdf: vi.fn() }));
 vi.mock("../src/server/ipp/operations.js", async original => ({ ...await original<typeof import("../src/server/ipp/operations.js")>(), printJob: vi.fn() }));
@@ -169,6 +171,11 @@ it("lays a document out on sheets before it is converted or sent, in either mode
     expect(Object.keys(sent.jobAttributes ?? {})).toEqual(["copies"]);
     expect(await sheets(sent.data)).toHaveLength(3);
     expect((await sheets(sent.data))[0]!.width).toBeCloseTo(841.89, 1);
+    // A page range is counted in the document's pages, so it is applied here and never reaches the printer, which would count sheets.
+    const ranged = await sendIpp({ ...twoUp, "page-ranges": "1-2" }, pdf.documentFormat, {}, pdf.filePath, media);
+    expect(await sheets(ranged.data)).toHaveLength(1);
+    expect(Object.keys(ranged.jobAttributes ?? {})).toEqual([]);
+    expect(Object.keys((await sendIpp({ "page-ranges": "1-2" }, pdf.documentFormat, {}, pdf.filePath, media)).jobAttributes ?? {})).toEqual(["page-ranges"]);
     // An image becomes a PDF on the way, which black and white can then convert like any other.
     const flyer = await sendIpp({ ...twoUp, "black-and-white": "true" }, image.documentFormat, {}, image.filePath);
     expect(flyer.documentFormat).toBe("application/pdf");
@@ -177,6 +184,38 @@ it("lays a document out on sheets before it is converted or sent, in either mode
     const imagesOnly = { "document-format-supported": { type: "mimeMediaType", values: ["image/jpeg", "image/png"] } };
     await expect(sendIpp(twoUp, image.documentFormat, {}, image.filePath, imagesOnly)).rejects.toThrow("does not accept application/pdf, which a layout is sent as");
     expect((await sendIpp({}, image.documentFormat, {}, image.filePath, imagesOnly)).documentFormat).toBe("image/png");
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("needs one page per sheet said in full to undo a preset's layout, since a job's options are laid over its preset's", () => {
+  const db = openDb(":memory:");
+  const user = createUser(db, { name: "User", email: "user@example.org", password: "test password", role: "user" });
+  const stamp = new Date().toISOString();
+  db.prepare("INSERT INTO printers (name, uri, created_at) VALUES (?, ?, ?)").run("Fixture", "ipp://127.0.0.1:1/ipp/print", stamp);
+  db.prepare("INSERT INTO presets (printer_id, name, scope, options, created_at, updated_at) VALUES (1, 'Handout', 'global', ?, ?, ?)")
+    .run(JSON.stringify({ "layout-columns": 2, "layout-rows": 2, "layout-crop-marks": "true" }), stamp, stamp);
+  const queued = (options: Record<string, unknown>) => JSON.parse(createJob(db, { printerId: 1, presetId: 1, user, filename: "notes.pdf", filePath: "/unused/notes.pdf", byteSize: 10, documentFormat: "application/pdf", options }).options_final) as Record<string, unknown>;
+  // Left out, the preset's own layout comes back, whatever the form was showing.
+  expect(layoutFrom(queued({}))).toMatchObject({ columns: 2, rows: 2, cropMarks: true });
+  expect(layoutFrom(queued(NO_LAYOUT_OPTIONS))).toBeNull();
+});
+
+it.skipIf(!(await ghostscriptAvailable()))("resizes an image to its space in a layout even with resize off, as it has no size of its own to keep", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-layout-image-"));
+  const file = path.join(dir, "card.png");
+  await writeFile(file, flatPng(40, 30, [255, 0, 0]));
+  try {
+    const media = { "media-default": { type: "keyword", values: ["iso_a4_210x297mm"] } };
+    const sent = await sendIpp({ "layout-columns": 2, "layout-fit": "false", "layout-margin": 0, "layout-gap": 0 }, "image/png", {}, file, media);
+    const sheet = await rasterise(sent.data);
+    // At a point a pixel the image would be a 40 pt speck; resized it fills half the sideways sheet's width.
+    expect([sheet.width, sheet.height]).toEqual([842, 595]);
+    expect(sheet.at(40, 297)).toEqual([255, 0, 0]);
+    expect(sheet.at(380, 297)).toEqual([255, 0, 0]);
+    expect(sheet.at(630, 297)).toEqual([255, 255, 255]);
   }
   finally {
     await rm(dir, { recursive: true, force: true });

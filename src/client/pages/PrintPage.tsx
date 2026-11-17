@@ -1,18 +1,19 @@
 import type { FormEvent } from "react";
 import type { DocumentSize, FormField, JobDto, PresetDto, PrinterDto, ValidationResult } from "../../shared/types.js";
 import type { OptionValues } from "../components/OptionsForm.js";
+import type { DocumentInfo } from "../util.js";
 import { useEffect, useRef, useState } from "react";
 import { isPrimaryOption, isQuickOption } from "../../shared/attributes.js";
-import { describeLayout, isLayoutOption, layoutFrom } from "../../shared/layout.js";
+import { isLayoutOption } from "../../shared/layout.js";
 import { api } from "../api.js";
 import { IconAlert, IconCheck, IconChevron, IconInfo, Spinner } from "../components/Icons.js";
 import { JobsTable } from "../components/JobsTable.js";
-import { LayoutOptions } from "../components/LayoutOptions.js";
+import { LayoutSection, Quantity } from "../components/LayoutOptions.js";
 import { OptionsForm } from "../components/OptionsForm.js";
 import { Button, Dropzone, EmptyState, Field, Notice, Panel, SkeletonRows, StateBadge } from "../components/ui.js";
 import { ValidationNotice } from "../components/Validation.js";
 import { useChosenPrinter, useJobs } from "../hooks.js";
-import { defaultsFrom, describeReason, jobReasons, pdfPageSize, remember, remembered, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
+import { defaultsFrom, describeDocument, describeReason, jobReasons, remember, remembered, stateTone, summariseOptions, useAsyncError, useDebounced, useWarnBeforeLeaving } from "../util.js";
 
 interface Props {
   printers: PrinterDto[];
@@ -50,14 +51,14 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const [presetId, setPresetId] = useState<number | null>(null);
   const [options, setOptions] = useState<OptionValues>({});
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [documentSize, setDocumentSize] = useState<DocumentSize | null>(null);
+  const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
   const { error, fail, clear } = useAsyncError();
 
-  // Measured once per file, so the form can say a page will be cut before the job is sent.
+  // Read once per file, so the form can say a page will be cut, and how many pieces a run makes, before the job is sent.
   useEffect(() => {
     let cancelled = false;
-    const measured = file ? file.arrayBuffer().then(bytes => pdfPageSize(new Uint8Array(bytes))) : Promise.resolve(null);
-    measured.then(size => !cancelled && setDocumentSize(size)).catch(() => !cancelled && setDocumentSize(null));
+    const described = file ? describeDocument(file) : Promise.resolve(null);
+    described.then(info => !cancelled && setDocumentInfo(info)).catch(() => !cancelled && setDocumentInfo(null));
     return () => {
       cancelled = true;
     };
@@ -86,7 +87,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
       return;
     const { options: chosen, document } = current as { options: OptionValues; document?: DocumentSize };
     api.validate(printer.id, chosen, document).then(setValidation).catch(fail);
-  }, { options, ...(documentSize ? { document: documentSize } : {}) }, 300);
+  }, { options, ...(documentInfo?.size ? { document: documentInfo.size } : {}) }, 300);
 
   function choosePreset(id: number | null) {
     if (!fields)
@@ -116,7 +117,6 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const blocked = validation !== null && validation.errors.length > 0;
   const stopped = printer.summary.state === "stopped";
   const all = fields ?? [];
-  const copiesField = all.filter(f => f.name === "copies");
   const summaryNames = all.filter(f => isPrimaryOption(f.name) || isLayoutOption(f.name)).map(f => f.name);
   const quick = all.filter(f => isQuickOption(f.name) && f.name !== "copies");
   const finishing = all.filter(f => isPrimaryOption(f.name) && !isQuickOption(f.name));
@@ -125,20 +125,10 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const adjustable = all.filter(f => f.name !== "copies" && !isLayoutOption(f.name));
   const hasPresets = presets.length > 0;
   const preset = presets.find(p => p.id === presetId) ?? null;
-  const summary = fields ? summariseOptions(fields, options, summaryNames) : "";
-  const layout = layoutFrom(options);
+  const summary = fields ? summariseOptions(fields, options, summaryNames, { pages: documentInfo?.pages ?? null }) : "";
   // The layout is the job's own in either case, so it sits beside the preset rather than under "Adjust this job".
-  const layoutDisclosure = all.some(f => isLayoutOption(f.name)) && (
-    <details className="disclosure">
-      <summary>
-        <IconChevron className="icon chev" />
-        Layout
-        <span className="disclosure-note">{`· ${layout ? describeLayout(layout) : "one page per sheet"}`}</span>
-      </summary>
-      <div className="disclosure-body">
-        <LayoutOptions fields={all} value={options} onChange={setOptions} document={documentSize} />
-      </div>
-    </details>
+  const layoutSection = all.some(f => isLayoutOption(f.name)) && (
+    <LayoutSection fields={all} value={options} onChange={setOptions} document={documentInfo} problems={validation?.layout ?? null} />
   );
 
   // Stays mounted while the job goes out, so "these settings" are still here to print another with.
@@ -173,7 +163,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
             </div>
             {stopped && <Notice tone="warning">This printer reports it is stopped. You can queue the job; it prints when the printer recovers.</Notice>}
           </div>
-          {copiesField.length > 0 && <OptionsForm fields={copiesField} value={options} onChange={setOptions} friendly />}
+          <Quantity fields={all} value={options} onChange={setOptions} pages={documentInfo?.pages ?? null} />
         </div>
       </div>
 
@@ -218,7 +208,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
                         </div>
                       </details>
                     )}
-                    {layoutDisclosure}
+                    {layoutSection}
                     {more.length > 0 && (
                       <details className="disclosure">
                         <summary>
@@ -253,7 +243,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
                     </div>
                   </details>
                 )}
-                {hasPresets && preset !== null && layoutDisclosure}
+                {hasPresets && preset !== null && layoutSection}
 
                 <ValidationNotice result={validation} value={options} onApply={setOptions} />
                 {error && <Notice tone="error">{error}</Notice>}

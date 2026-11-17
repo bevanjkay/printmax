@@ -24,13 +24,13 @@ export function validateJobOptions(options: Record<string, unknown>, profile: Pr
 }
 
 /** The layout is printmax's own in either mode; the paper only decides whether its spacing leaves room for pages. */
-function validateLayout(options: Record<string, unknown>, profile: PrinterProfile): string[] {
+export function validateLayout(options: Record<string, unknown>, profile: PrinterProfile): string[] {
   const errors = layoutErrors(options);
   if (errors.length > 0)
     return errors;
   const layout = layoutFrom(options);
   const paper = layout ? paperFor(profile, options) : null;
-  return layout && paper && !hasRoom(paper, layout) ? ["the layout's margin and gaps leave no room on the paper for pages"] : [];
+  return layout && paper && !hasRoom(paper, layout) ? ["The layout's margin and gaps leave no room for pages on this paper. Use a smaller gap, or fewer columns and rows."] : [];
 }
 
 function validatePrinterOptions(options: Record<string, unknown>, profile: PrinterProfile): string[] {
@@ -117,5 +117,7 @@ export function checkOptions(options: Record<string, unknown>, profile: PrinterP
       resolved = options;
     }
   }
-  return { errors, warnings, resolved };
+  // Laid out, every warning is about the fit of pages in their spaces.
+  const layout = { errors: validateLayout(options, profile), warnings: layoutFrom(options) ? warnings : [], paper: paperFor(profile, options) };
+  return { errors, warnings, layout, resolved };
 }

@@ -166,18 +166,31 @@ Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/boo
 ## Page layout (several pages to a sheet)
 
 The Print page's **Layout** section places pages on the sheet before the document is sent, so it
-works the same on every printer and in either mode: columns and rows, the order the pages run in,
-**Repeat each page** (a sheet of one flyer, to cut apart), a margin and a gap, crop marks and page
-borders. Pages are scaled to their space unless **Resize pages to fit** is off, and the sheet is the
-job's paper, turned on its side when that gives the pages more room. The options are printmax's own
-(`layout-columns`, `layout-rows` and so on in the option map), so they save into presets and Library
-documents and `get_print_options` lists them. A laid-out document is sent as a PDF, an image
-included, so in IPP mode the printer has to accept PDF.
+works the same on every printer and in either mode. One click chooses 2 or 4 pages per sheet; under
+that are the columns and rows, **Repeat each page** (a sheet of one flyer, to cut apart), resizing
+and turning pages to fit, crop marks and page borders, and under **Spacing and order** the margin,
+the gap and the way the pages run. A sketch shows the first sheet as it will print, drawn from the
+same placements the server uses. The sheet is the job's paper, turned on its side when that gives
+the pages more room.
 
 On a printer that lists A3, **Cut from A3** offers ready-made layouts for pieces cut from the
 sheet: A6 cards (8 per sheet, or 4 at full size), business cards (10) and DL (6). Eight A6 or six DL
 fill an A3 exactly, so the margin and gaps to cut along leave them at about 96% and 95% of full
-size, which each button says; business cards have room to spare and are never resized.
+size, which each choice says; business cards have room to spare and are never resized. With a
+repeated layout a copy is a whole sheet, so **Copies** gains a total beside it and either can be
+typed: asking for 40 works out the sheets.
+
+The options are printmax's own (`layout-columns`, `layout-rows` and so on in the option map), so
+they save into presets and Library documents, the preset editor has the same section, and
+`get_print_options` lists them. A laid-out document is sent as a PDF, so in IPP mode the printer
+has to accept PDF. Worth knowing:
+
+- an image has no size of its own, so in a layout it always fills its space, resize on or off;
+- a page range is counted in the document's pages and applied before the pages are placed;
+- filled-in form fields are drawn into their pages first, less any that are hidden or not set to
+  print; an XFA form, or a PDF with stamps or comments set to print, is refused, because a layout
+  would leave them out;
+- a cropped page is placed by its crop box, as a reader shows it.
 
 ## Library
 

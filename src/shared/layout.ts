@@ -98,15 +98,14 @@ export function layoutErrors(options: Record<string, unknown>): string[] {
 }
 
 /**
- * The layout an option map asks for, or null when it leaves each page on a sheet of its own with
- * nothing drawn around it, which is no layout at all. Anything unreadable falls back to its default,
- * so a form can ask while a value is half typed; `layoutErrors` is what refuses a job.
+ * Every layout value an option map holds, each falling back to its default where it is unset or
+ * unreadable, so a form can ask while a value is half typed; `layoutErrors` is what refuses a job.
  */
-export function layoutFrom(options: Record<string, unknown>): Layout | null {
+export function readLayout(options: Record<string, unknown>): Layout {
   const number = (name: string, fallback: number, min: number, max: number) => Math.min(max, Math.max(min, whole(options[name]) ?? fallback));
   const flag = (name: string, fallback: boolean) => toggle(options[name]) ?? fallback;
   const order = options[LAYOUT.order];
-  const layout: Layout = {
+  return {
     columns: number(LAYOUT.columns, LAYOUT_DEFAULTS.columns, 1, LAYOUT_LIMITS.grid),
     rows: number(LAYOUT.rows, LAYOUT_DEFAULTS.rows, 1, LAYOUT_LIMITS.grid),
     order: order === "across" || order === "down" ? order : LAYOUT_DEFAULTS.order,
@@ -118,6 +117,14 @@ export function layoutFrom(options: Record<string, unknown>): Layout | null {
     cropMarks: flag(LAYOUT.cropMarks, LAYOUT_DEFAULTS.cropMarks),
     borders: flag(LAYOUT.borders, LAYOUT_DEFAULTS.borders),
   };
+}
+
+/**
+ * The layout an option map asks for, or null when it leaves each page on a sheet of its own with
+ * nothing drawn around it, which is no layout at all.
+ */
+export function layoutFrom(options: Record<string, unknown>): Layout | null {
+  const layout = readLayout(options);
   return layout.columns * layout.rows > 1 || layout.cropMarks || layout.borders ? layout : null;
 }
 
@@ -188,6 +195,70 @@ export function hasRoom(paper: Size, layout: Layout): boolean {
   });
 }
 
+export interface Placement {
+  /** Which of the document's pages this is, counted from 0. */
+  page: number;
+  /** The page's bottom-left corner, measured from the sheet's, and the size it takes there, in points. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** How much of its own size the page keeps. */
+  scale: number;
+  /** Turned a quarter to suit its space. */
+  turned: boolean;
+}
+
+/**
+ * Where the pages of one sheet land. `sizes` holds every page of the document as a reader shows it.
+ * The server draws from this and the form sketches from it, so the sketch is the sheet in miniature
+ * rather than a picture of what it might be.
+ */
+export function placePages(sheet: Size, layout: Layout, sizes: Size[], sheetIndex: number): Placement[] {
+  const { columns, rows } = layout;
+  const cell = cellSize(sheet, layout);
+  const margin = layout.margin * POINTS_PER_MM;
+  const gap = layout.gap * POINTS_PER_MM;
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+
+  const placed = [];
+  for (let cellIndex = 0; cellIndex < columns * rows; cellIndex++) {
+    const page = pageInCell(sheetIndex, cellIndex, layout);
+    const size = sizes[page];
+    if (!size)
+      continue;
+    const turned = turnsPage(cell, size, layout);
+    placed.push({ page, turned, ...cellPosition(cellIndex, layout), width: turned ? size.height : size.width, height: turned ? size.width : size.height });
+  }
+
+  // Fitted, every cell is the same size; at their own size, each column and row is as large as its largest page.
+  const widths = Array.from<number>({ length: columns }).fill(layout.fit ? cell.width : 0);
+  const heights = Array.from<number>({ length: rows }).fill(layout.fit ? cell.height : 0);
+  if (!layout.fit) {
+    for (const page of placed) {
+      widths[page.column] = Math.max(widths[page.column]!, page.width);
+      heights[page.row] = Math.max(heights[page.row]!, page.height);
+    }
+  }
+  const left = margin + Math.max(0, (sheet.width - margin * 2 - sum(widths) - gap * (columns - 1)) / 2);
+  const top = margin + Math.max(0, (sheet.height - margin * 2 - sum(heights) - gap * (rows - 1)) / 2);
+
+  return placed.map((page) => {
+    const scale = layout.fit ? Math.min(cell.width / page.width, cell.height / page.height) : 1;
+    const width = page.width * scale;
+    const height = page.height * scale;
+    return {
+      page: page.page,
+      x: left + sum(widths.slice(0, page.column)) + gap * page.column + (widths[page.column]! - width) / 2,
+      y: sheet.height - top - sum(heights.slice(0, page.row + 1)) - gap * page.row + (heights[page.row]! - height) / 2,
+      width,
+      height,
+      scale,
+      turned: page.turned,
+    };
+  });
+}
+
 /** The layout as a phrase for a summary line: "4 pages per sheet", "2 of each page per sheet with crop marks". */
 export function describeLayout(layout: Layout): string {
   const perSheet = layout.columns * layout.rows;
@@ -198,8 +269,21 @@ export function describeLayout(layout: Layout): string {
   return marks ? `${pages} with ${marks}` : pages;
 }
 
-/** The option-map form of a layout, as a form would hold it. */
-export function layoutOptions(layout: Layout): Record<string, string | number> {
+/**
+ * What a run comes to when every sheet repeats one page, which is where "copies" stops meaning what
+ * people need: "40 in total (5 copies \u00D7 8 per sheet)". `pages` is the document's page count where known.
+ */
+export function describeRun(copies: number, layout: Layout, pages: number | null): string {
+  const perSheet = layout.columns * layout.rows;
+  const total = `${copies * perSheet} ${pages === 1 ? "in total" : "of each page"}`;
+  return `${total} (${copies} ${copies === 1 ? "copy" : "copies"} \u00D7 ${perSheet} per sheet)`;
+}
+
+/**
+ * The option-map form of how a layout arranges its pages. Crop marks and borders are left out: they
+ * are the user's own choice, kept whichever arrangement is picked.
+ */
+export function arrangementOptions(layout: Layout): Record<string, string | number> {
   return {
     [LAYOUT.columns]: layout.columns,
     [LAYOUT.rows]: layout.rows,
@@ -209,14 +293,30 @@ export function layoutOptions(layout: Layout): Record<string, string | number> {
     [LAYOUT.rotate]: String(layout.rotate),
     [LAYOUT.margin]: layout.margin,
     [LAYOUT.gap]: layout.gap,
-    [LAYOUT.cropMarks]: String(layout.cropMarks),
-    [LAYOUT.borders]: String(layout.borders),
   };
 }
 
-export function sameLayout(a: Layout, b: Layout): boolean {
-  return (Object.keys(a) as Array<keyof Layout>).every(key => a[key] === b[key]);
+/** The option-map form of a whole layout, as a form would hold it. */
+export function layoutOptions(layout: Layout): Record<string, string | number> {
+  return { ...arrangementOptions(layout), [LAYOUT.cropMarks]: String(layout.cropMarks), [LAYOUT.borders]: String(layout.borders) };
 }
+
+/**
+ * No layout, stated in full. A job's options are laid over its preset's, so leaving the layout out
+ * would let a preset's own layout back in: one page per sheet has to be said, not implied.
+ */
+export const NO_LAYOUT_OPTIONS = layoutOptions(LAYOUT_DEFAULTS);
+
+/** Whether two layouts arrange their pages the same way, marks and borders aside. */
+export function sameArrangement(a: Layout, b: Layout): boolean {
+  return (Object.keys(a) as Array<keyof Layout>).every(key => key === "cropMarks" || key === "borders" || a[key] === b[key]);
+}
+
+/** The everyday arrangements, which suit whatever paper the job is on. Two side by side turn sideways pages to sit one above the other. */
+export const PAGES_PER_SHEET: Array<{ id: string; name: string; detail: string; layout: Layout }> = [
+  { id: "two", name: "2 pages", detail: "Side by side", layout: { ...LAYOUT_DEFAULTS, columns: 2, rotate: true } },
+  { id: "four", name: "4 pages", detail: "Two across, two down", layout: { ...LAYOUT_DEFAULTS, columns: 2, rows: 2 } },
+];
 
 /** ISO paper the ready-made layouts are cut from, in millimetres. */
 export const ISO_PAPER = { A3: { width: 297, height: 420 } } as const;
@@ -257,6 +357,11 @@ export function templatePaper(template: LayoutTemplate): Size {
   return points(ISO_PAPER[template.paper]);
 }
 
+/** The finished piece a template cuts, in points, for a sketch drawn before any document is chosen. */
+export function templatePiece(template: LayoutTemplate): Size {
+  return points(template.size);
+}
+
 /** How much of its finished size a template's piece keeps on its paper. */
 export function templateScale(template: LayoutTemplate): number {
   return pageScale(templatePaper(template), template.layout, points(template.size));
@@ -266,5 +371,8 @@ export function templateScale(template: LayoutTemplate): number {
 export function describeTemplate(template: LayoutTemplate): string {
   const perSheet = `${template.layout.columns * template.layout.rows} per ${template.paper}`;
   const scale = Math.round(templateScale(template) * 100);
-  return scale === 100 ? `${perSheet}, full size` : `${perSheet}, at ${scale}% of full size`;
+  if (scale !== 100)
+    return `${perSheet}, at ${scale}% of full size`;
+  // A name that already promises full size does not need telling twice.
+  return /full size/i.test(template.name) ? perSheet : `${perSheet}, full size`;
 }

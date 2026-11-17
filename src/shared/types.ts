@@ -112,6 +112,11 @@ export interface ValidationResult {
   errors: string[];
   /** Advisory problems that do not block the job. */
   warnings: string[];
+  /**
+   * Those of the errors and warnings above that are about the layout, which a form shows beside the
+   * layout rather than as the printer's objection, and the paper the sheets are cut to, in points.
+   */
+  layout: { errors: string[]; warnings: string[]; paper: DocumentSize | null };
   /** Options after applying the printer's own resolvers; equals the input when nothing conflicted. */
   resolved: Record<string, unknown>;
 }
