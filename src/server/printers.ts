@@ -77,7 +77,7 @@ export function setPpd(db: Db, id: number, text: unknown): PrinterRow {
   if (typeof text !== "string" || !text.startsWith("*PPD-Adobe"))
     throw new HttpError(400, "that is not a PPD file (it should start with *PPD-Adobe)");
   const parsed = parsePpd(text);
-  if (parsed.options.filter(o => !o.installable).length === 0)
+  if (!parsed.options.some(o => !o.installable))
     throw new HttpError(400, "the PPD has no user options");
   db.prepare("UPDATE printers SET ppd = ? WHERE id = ?").run(text, id);
   return requirePrinter(db, id);

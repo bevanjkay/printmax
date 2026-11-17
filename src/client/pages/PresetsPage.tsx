@@ -155,7 +155,7 @@ function presetsInFile(text: string): PresetExportItem[] {
   const parsed: unknown = JSON.parse(text);
   const items = Array.isArray(parsed) ? parsed : (parsed as { presets?: unknown } | null)?.presets;
   if (!Array.isArray(items))
-    throw new Error("That file is not a printmax preset export.");
+    throw new TypeError("That file is not a printmax preset export.");
   return items as PresetExportItem[];
 }
 
