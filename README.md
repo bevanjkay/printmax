@@ -149,7 +149,9 @@ and switch the printer to **PostScript via PPD**. From then on:
   option's snippet in `*OrderDependency` order, exactly as CUPS emits it;
 - copies are asked for inside the PostScript (`NumCopies`), not as an IPP attribute, since a
   printer in this mode reads the document and ignores the attributes;
-- PDF is the only accepted upload while the mode is on;
+- a PNG or JPEG is set on a one-page PDF first and always scaled to the paper, since an image has
+  no page size of its own to print at. A JPEG is turned the way its EXIF orientation says; a PNG
+  over 32 megapixels is refused, because it has to be decoded in the server's memory;
 - **Fit to paper** (on by default) scales each page to the chosen paper, the way a driver does.
   Turn it off to print every page at the size it was made, centred on the sheet and turned a
   quarter when that is the only way it fits; the form then warns when a page is larger than the

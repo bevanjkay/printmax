@@ -125,7 +125,7 @@ function blackAndWhiteField(profile: PrinterProfile): FormField[] {
     name: BLACK_AND_WHITE,
     label: "Black and white",
     widget: "select",
-    help: "Converts the document to greyscale before it is sent, so the printer has no colour to print whatever its colour setting. PDF only.",
+    help: `Converts the document to greyscale before it is sent, so the printer has no colour to print whatever its colour setting.${profile.mode === "postscript" ? "" : " PDF only."}`,
     choices: [{ value: "false", label: "Off" }, { value: "true", label: "On" }],
     default: String(toggleIsOn({}, profile.optionDefaults, BLACK_AND_WHITE, false)),
   }];

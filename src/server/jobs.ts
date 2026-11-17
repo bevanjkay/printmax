@@ -5,7 +5,8 @@ import type { IppAttributes } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import type { PrinterRow } from "./printers.js";
 import { randomUUID } from "node:crypto";
-import { copyFile, readFile, unlink } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, toggleIsOn, withoutOwnOptions } from "../shared/attributes.js";
 import { now } from "./db.js";
@@ -15,6 +16,7 @@ import { attrValues } from "./ipp/codec.js";
 import { TERMINAL_JOB_STATES } from "./ipp/constants.js";
 import { getJobAttributes, cancelJob as ippCancelJob, printJob } from "./ipp/operations.js";
 import { buildJobAttributes } from "./ipp/options.js";
+import { imageToPdf } from "./pdf/image.js";
 import { assemblePostScript } from "./ppd/assemble.js";
 import { marginsFor, ppdChoices } from "./ppd/form.js";
 import { conversionTimeoutMs, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "./ppd/ghostscript.js";
@@ -111,14 +113,11 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
   const profile = profileFor(printer);
   const caps = profile.caps;
 
+  // In PostScript mode every upload is converted, an image by way of a PDF, so what the printer reads itself decides nothing.
+  const converted = profile.mode === "postscript";
   const formats = attrValues<string>(caps, "document-format-supported");
-  if (profile.mode === "postscript") {
-    if (input.documentFormat !== "application/pdf")
-      throw new HttpError(415, `${printer.name} is in PostScript mode, which prints PDF only`);
-  }
-  else if (formats.length > 0 && !formats.includes(input.documentFormat) && !formats.includes("application/octet-stream")) {
+  if (!converted && formats.length > 0 && !formats.includes(input.documentFormat) && !formats.includes("application/octet-stream"))
     throw new HttpError(415, `${printer.name} does not accept ${input.documentFormat}; it supports ${formats.join(", ")}`);
-  }
 
   let options = { ...input.options };
   let presetId: number | null = null;
@@ -135,7 +134,7 @@ export function createJob(db: Db, input: CreateJobInput): JobRow {
   const errors = validateJobOptions(options, profile);
   if (errors.length > 0)
     throw new HttpError(422, errors.join("; "));
-  if (input.documentFormat !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false))
+  if (!converted && input.documentFormat !== "application/pdf" && toggleIsOn(options, profile.optionDefaults, BLACK_AND_WHITE, false))
     throw new HttpError(415, "Black and white converts PDFs only; turn it off to print this file");
 
   const timestamp = now();
@@ -253,29 +252,52 @@ async function ippDocument(job: JobRow, options: Record<string, unknown>, graysc
   return { data, documentFormat: job.document_format, jobAttributes: buildJobAttributes(withoutOwnOptions(options), caps) };
 }
 
+/** Runs `work` on the job's document as a PDF file: the upload itself, or an image set on a page of its own. */
+async function withPdf<T>(job: JobRow, work: (pdfPath: string) => Promise<T>): Promise<T> {
+  if (job.document_format === "application/pdf")
+    return work(job.file_path!);
+  const dir = await mkdtemp(path.join(tmpdir(), "printmax-image-"));
+  try {
+    const pdfPath = path.join(dir, "image.pdf");
+    await writeFile(pdfPath, await imageToPdf(job.file_path!, job.document_format));
+    return await work(pdfPath);
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /** The driver's dialect: PDF through Ghostscript, wrapped in the PPD's JCL with its setup snippets. */
 async function postScriptDocument(job: JobRow, ppd: ParsedPpd, options: Record<string, unknown>, defaults: Record<string, unknown>, caps: IppAttributes, userName: string, signal: AbortSignal, limits: ConversionLimits) {
   const chosen = ppdChoices(options);
+  // An image has no size of its own to print at, so it is always scaled to a sheet: the one chosen,
+  // or the PPD's default, which is the one the setup block asks the printer for.
+  const image = job.document_format !== "application/pdf";
+  const pageSize = chosen.PageSize ?? (image ? ppd.options.find(o => o.key === "PageSize")?.default ?? undefined : undefined);
   // The sheet is forced either way: left to itself each page states its own size and the printer
   // asks for that paper instead of the one PageSize chose. Only the scaling is the user's call.
-  const paper = chosen.PageSize ? ppd.paperDimensions[chosen.PageSize] : undefined;
-  const fitToPaper = toggleIsOn(options, defaults, FIT_TO_PAGE, true);
+  const paper = pageSize ? ppd.paperDimensions[pageSize] : undefined;
+  if (image && !paper)
+    throw new Error("the printer's PPD does not give the size of its paper, which an image has to be scaled to");
+  const fitToPaper = image || toggleIsOn(options, defaults, FIT_TO_PAGE, true);
   const keepMargins = toggleIsOn(options, defaults, FIT_TO_MARGINS, false);
-  const margins = keepMargins ? marginsFor(ppd, chosen.PageSize) : null;
-  // The page count sets how long conversion may take. Only an unfitted page needs its size; a fitted
-  // one is scaled to the sheet whatever size it was.
-  const measured = await measurePdf(job.file_path!, { signal });
-  const documentPage = paper && !fitToPaper ? measured?.largest : undefined;
-  const document = await pdfToPostScript(job.file_path!, {
-    signal,
-    timeoutMs: conversionTimeoutMs(measured?.pages ?? 0, limits.postScriptSecondsPerPage),
-    fitToPaper,
-    grayscale: toggleIsOn(options, defaults, BLACK_AND_WHITE, false),
-    ...(documentPage ? { documentPage } : {}),
-    ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
-    ...(ppd.resolution ? { resolution: ppd.resolution } : {}),
-    ...(paper ? { paper } : {}),
-    ...(margins ? { margins } : {}),
+  const margins = keepMargins ? marginsFor(ppd, pageSize) : null;
+  const document = await withPdf(job, async (pdfPath) => {
+    // The page count sets how long conversion may take. Only an unfitted page needs its size; a fitted
+    // one is scaled to the sheet whatever size it was.
+    const measured = await measurePdf(pdfPath, { signal });
+    const documentPage = paper && !fitToPaper ? measured?.largest : undefined;
+    return pdfToPostScript(pdfPath, {
+      signal,
+      timeoutMs: conversionTimeoutMs(measured?.pages ?? 0, limits.postScriptSecondsPerPage),
+      fitToPaper,
+      grayscale: toggleIsOn(options, defaults, BLACK_AND_WHITE, false),
+      ...(documentPage ? { documentPage } : {}),
+      ...(limits.maxPostScriptBytes !== undefined ? { maxOutputBytes: limits.maxPostScriptBytes } : {}),
+      ...(ppd.resolution ? { resolution: ppd.resolution } : {}),
+      ...(paper ? { paper } : {}),
+      ...(margins ? { margins } : {}),
+    });
   });
   const copies = Number(options.copies);
   const data = assemblePostScript({ ppd, chosen, jobName: job.filename, userName, document, copies: Number.isInteger(copies) ? copies : 1 });

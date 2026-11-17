@@ -318,7 +318,7 @@ function PostScriptMode({ printer, onChanged }: { printer: PrinterDto; onChanged
       <div className="disclosure-body stack">
         <p className="help">
           Some finishing, such as folding and saddle-stitched booklets, only exists in the vendor's PostScript driver.
-          Upload the printer's PPD and printmax can send jobs the way that driver does; the print form then shows the PPD's options instead of the IPP ones. PDF only.
+          Upload the printer's PPD and printmax can send jobs the way that driver does; the print form then shows the PPD's options instead of the IPP ones. Images are converted to PDF on the way.
         </p>
         <div className="row between small">
           <span>

@@ -8,11 +8,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { formFor } from "../src/server/form.js";
+import { imageToPdf } from "../src/server/pdf/image.js";
 import { assemblePostScript, jclHeader, setupBlock } from "../src/server/ppd/assemble.js";
 import { marginsFor, ppdFields, validatePpdOptions } from "../src/server/ppd/form.js";
 import { ghostscriptAvailable, measurePdf, pdfToGrayscalePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
+import { flatPng, withOrientation } from "./helpers/images.js";
+import { rasterise } from "./helpers/raster.js";
 
 const execFileAsync = promisify(execFile);
 const text = readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8");
@@ -443,6 +446,72 @@ describe.skipIf(!(await ghostscriptAvailable()))("ghostscript", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("prints a PNG or JPEG by way of a one-page PDF, scaled to the sheet and turned to fill it", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-image-"));
+    try {
+      const png = path.join(dir, "wide.png");
+      const jpeg = path.join(dir, "wide.jpg");
+      await writeFile(png, flatPng(400, 300, [255, 0, 0]));
+      await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=jpeg", "-r72", "-g400x300", `-sOutputFile=${jpeg}`, "-c", "1 0 0 setrgbcolor 0 0 400 300 rectfill showpage"]);
+      for (const [file, format] of [[png, "image/png"], [jpeg, "image/jpeg"]] as const) {
+        const pdf = path.join(dir, "image.pdf");
+        await writeFile(pdf, await imageToPdf(file, format));
+        expect(await measurePdf(pdf)).toEqual({ pages: 1, largest: { width: 400, height: 300 } });
+        const document = await pdfToPostScript(pdf, { paper: { width: 595, height: 842 }, fitToPaper: true, resolution: { x: 72, y: 72 } });
+        // A 4:3 image on upright A4 is turned a quarter and fills the sheet's width.
+        const ink = await box(document);
+        expect(ink[2]! - ink[0]!).toBeGreaterThan(590);
+        expect(ink[3]! - ink[1]!).toBeCloseTo(595 * 4 / 3, -1);
+        expect(await colourfulness(document, "ps")).toBeGreaterThan(200);
+      }
+      await writeFile(png, "\x89PNG\r\n\x1A\n and nothing after it", "latin1");
+      await expect(imageToPdf(png, "image/png")).rejects.toThrow("could not read the image");
+      // A header is all it takes to claim a size that would unpack to gigabytes, so it is refused on the claim.
+      const vast = flatPng(4, 4, [255, 0, 0]);
+      vast.writeUInt32BE(20_000, 16);
+      vast.writeUInt32BE(20_000, 20);
+      await writeFile(png, vast);
+      await expect(imageToPdf(png, "image/png")).rejects.toThrow("400 megapixels");
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("turns a camera's JPEG the way its EXIF orientation says it is meant to be seen", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "printmax-orientation-"));
+    try {
+      // 400 by 300 as stored, red in its top-left quarter and white elsewhere.
+      const stored = path.join(dir, "stored.jpg");
+      await execFileAsync("gs", ["-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=jpeg", "-r72", "-g400x300", `-sOutputFile=${stored}`, "-c", "1 0 0 setrgbcolor 0 150 200 150 rectfill showpage"]);
+      const corners = { topLeft: [0.25, 0.75], topRight: [0.75, 0.75], bottomLeft: [0.25, 0.25], bottomRight: [0.75, 0.25] } as const;
+      const seen: Record<number, string> = {};
+      for (let orientation = 1; orientation <= 8; orientation++) {
+        const file = path.join(dir, `orientation-${orientation}.jpg`);
+        await writeFile(file, withOrientation(readFileSync(stored), orientation));
+        const page = await rasterise(await imageToPdf(file, "image/jpeg"));
+        const red = Object.entries(corners).filter(([, [x, y]]) => {
+          const [r, g] = page.at(x * page.width, y * page.height);
+          return r > 200 && g < 80;
+        }).map(([corner]) => corner);
+        seen[orientation] = `${page.width}x${page.height} ${red.join("+")}`;
+      }
+      expect(seen).toEqual({
+        1: "400x300 topLeft",
+        2: "400x300 topRight",
+        3: "400x300 bottomRight",
+        4: "400x300 bottomLeft",
+        5: "300x400 topLeft",
+        6: "300x400 topRight",
+        7: "300x400 bottomRight",
+        8: "300x400 bottomLeft",
+      });
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("converts a PDF to DSC PostScript with one %%Page per page, forcing the paper when asked", async () => {
     const ps = (await pdfToPostScript(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url).pathname, { paper: { width: 595, height: 842 } })).toString("latin1");

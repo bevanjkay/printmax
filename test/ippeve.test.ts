@@ -10,6 +10,7 @@ import { buildApp } from "../src/server/app.js";
 import { openDb } from "../src/server/db.js";
 import { getJob, startJobWorker } from "../src/server/jobs.js";
 import { ghostscriptAvailable } from "../src/server/ppd/ghostscript.js";
+import { flatPng } from "./helpers/images.js";
 import { ippeveprinterAvailable, startVirtualPrinter } from "./helpers/ippeve.js";
 import { multipart } from "./helpers/multipart.js";
 
@@ -133,29 +134,33 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     expect((await app.inject(asAdmin({ method: "PUT", url: `/api/printers/${printerId}/ppd`, payload: { ppd } }))).statusCode).toBe(200);
     expect((await app.inject(asAdmin({ method: "PUT", url: `/api/printers/${printerId}/mode`, payload: { mode: "postscript" } }))).statusCode).toBe(200);
     try {
-      const pdf = readFileSync(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url), "latin1");
-      const res = await app.inject(asAdmin({
-        method: "POST",
-        url: "/api/jobs",
-        ...multipart({ printerId: String(printerId), options: JSON.stringify({ "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 2 }) }, { name: "booklet.pdf", content: pdf }),
-      }));
-      expect(res.statusCode, res.body).toBe(201);
-      const job = res.json<{ id: number }>();
-      const worker = startJobWorker(db, { intervalMs: 60_000 });
-      try {
-        const deadline = Date.now() + 20_000;
-        let row = getJob(db, job.id)!;
-        while (Date.now() < deadline && !FINISHED.includes(row.state)) {
-          await worker.tick();
-          row = getJob(db, job.id)!;
-          if (!FINISHED.includes(row.state))
-            await new Promise(r => setTimeout(r, 300));
+      const booklet = { name: "booklet.pdf", content: readFileSync(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url)) };
+      // An image goes the same way, by way of a PDF of its own.
+      const photo = { name: "photo.png", content: flatPng(400, 300, [255, 0, 0]) };
+      for (const [file, options] of [[booklet, { "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 2 }], [photo, {}]] as const) {
+        const res = await app.inject(asAdmin({
+          method: "POST",
+          url: "/api/jobs",
+          ...multipart({ printerId: String(printerId), options: JSON.stringify(options) }, file),
+        }));
+        expect(res.statusCode, res.body).toBe(201);
+        const job = res.json<{ id: number }>();
+        const worker = startJobWorker(db, { intervalMs: 60_000 });
+        try {
+          const deadline = Date.now() + 20_000;
+          let row = getJob(db, job.id)!;
+          while (Date.now() < deadline && !FINISHED.includes(row.state)) {
+            await worker.tick();
+            row = getJob(db, job.id)!;
+            if (!FINISHED.includes(row.state))
+              await new Promise(r => setTimeout(r, 300));
+          }
+          expect(row.error, String(row.error)).toBeNull();
+          expect(row.state).toBe("completed");
         }
-        expect(row.error, String(row.error)).toBeNull();
-        expect(row.state).toBe("completed");
-      }
-      finally {
-        worker.stop();
+        finally {
+          worker.stop();
+        }
       }
     }
     finally {
