@@ -71,6 +71,17 @@ export function ppdChoices(options: Record<string, unknown>): Record<string, str
   return out;
 }
 
+/** The PPD with a printer's own `ppd:` defaults in place of the driver's, so the form, constraints and setup block all start from them. */
+export function withPpdDefaults(ppd: ParsedPpd, defaults: Record<string, unknown>): ParsedPpd {
+  const chosen = ppdChoices(defaults);
+  if (Object.keys(chosen).length === 0)
+    return ppd;
+  return {
+    ...ppd,
+    options: ppd.options.map(o => o.key in chosen && o.choices.some(c => c.value === chosen[o.key]) ? { ...o, default: chosen[o.key]! } : o),
+  };
+}
+
 export function validatePpdOptions(ppd: ParsedPpd, options: Record<string, unknown>): string[] {
   const errors: string[] = [];
   const chosen = ppdChoices(options);

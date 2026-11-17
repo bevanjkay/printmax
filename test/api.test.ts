@@ -250,6 +250,17 @@ describe("aPI", () => {
       expect(nonsense.statusCode).toBe(422);
       expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "fit-to-page": "" } }))).json().optionDefaults).toEqual({});
 
+      // So are the driver's own options, which the print form then starts on.
+      const auto = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "ppd:ColorType": "Auto" } }));
+      expect(auto.statusCode, auto.body).toBe(200);
+      expect(auto.json().optionDefaults).toEqual({ "ppd:ColorType": "Auto" });
+      const coloured = (await app.inject(as(userCookie, { method: "GET", url: `/api/printers/${printerId}/form` }))).json<FormField[]>();
+      expect(coloured.find(f => f.name === "ppd:ColorType")?.default).toBe("Auto");
+      const notAChoice = await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "ppd:ColorType": "Sepia" } }));
+      expect(notAChoice.statusCode).toBe(422);
+      expect(notAChoice.json().error).toMatch(/"ppd:ColorType" = Sepia is not a choice/);
+      expect((await app.inject(as(adminCookie, { method: "PUT", url: `/api/printers/${printerId}/defaults`, payload: { "ppd:ColorType": "" } }))).json().optionDefaults).toEqual({});
+
       expect((await app.inject(as(adminCookie, { method: "DELETE", url: `/api/presets/${booklet.json<PresetDto>().id}` }))).statusCode).toBe(204);
       const off = await app.inject(as(adminCookie, { method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
       expect(off.json()).toMatchObject({ printMode: "ipp", ppd: null });

@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import type { CapsChangeDto, DiscoveredPrinter, FormField, PrinterDto } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
-import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, isOwnOption, keywordLabel, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
+import { BLACK_AND_WHITE, FIT_TO_MARGINS, FIT_TO_PAGE, isOwnOption, isPrimaryOption, keywordLabel, PPD_PREFIX, PRIMARY_ATTRIBUTES } from "../../shared/attributes.js";
 import { enumValue } from "../../shared/enums.js";
 import { standardValues } from "../../shared/registry.js";
 import { api } from "../api.js";
@@ -366,7 +366,7 @@ const labels = (xs: string[]) => xs.map(keywordLabel).join(", ") || "—";
 
 const DEFAULTABLE = [...PRIMARY_ATTRIBUTES, "media-source", "output-bin", "orientation-requested", BLACK_AND_WHITE, FIT_TO_PAGE, FIT_TO_MARGINS];
 
-/** Per-printer defaults for the print form, e.g. A4 instead of the printer's own Letter. Stored as `<attribute>-default` overrides. */
+/** Per-printer defaults for the print form, e.g. A4 instead of the printer's own Letter. IPP ones are stored as `<attribute>-default` overrides; printmax's own and `ppd:` ones in `optionDefaults`. */
 function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () => void }) {
   const [fields, setFields] = useState<FormField[]>([]);
   const [overridden, setOverridden] = useState(() => new Set<string>());
@@ -396,7 +396,7 @@ function Defaults({ printer, onChanged }: { printer: PrinterDto; onChanged: () =
       .catch(fail);
   }, [printer.id, printer.overrideCount, ownDefaults, fail]);
 
-  const editable = fields.filter(f => DEFAULTABLE.includes(f.name) && f.widget === "select" && (f.choices?.length ?? 0) > 1);
+  const editable = fields.filter(f => (DEFAULTABLE.includes(f.name) || (f.name.startsWith(PPD_PREFIX) && isPrimaryOption(f.name))) && f.widget === "select" && (f.choices?.length ?? 0) > 1);
   if (editable.length === 0)
     return null;
 

@@ -77,6 +77,17 @@ it("falls back to the printer's own fit to paper when the job does not say", asy
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" }, { "fit-to-page": "false" })).toMatchObject({ fitToPaper: true });
 });
 
+it("sends the printer's own driver defaults for options the job leaves unset", async () => {
+  const sent = async (options: Record<string, unknown>, optionDefaults: Record<string, unknown>) => {
+    await convert(options, optionDefaults);
+    return Buffer.from(vi.mocked(printJob).mock.calls.at(-1)![1].data).toString("latin1");
+  };
+  expect(await sent({ "ppd:PageSize": "A4" }, { "ppd:ColorType": "Auto" })).toContain("*ColorType Auto");
+  expect(await sent({ "ppd:PageSize": "A4" }, {})).toContain("*ColorType Color");
+  // A job that states it still wins over the printer's default.
+  expect(await sent({ "ppd:PageSize": "A4", "ppd:ColorType": "Mono" }, { "ppd:ColorType": "Auto" })).toContain("*ColorType Mono");
+});
+
 it("forces the chosen sheet either way, so the printer asks for the paper PageSize chose", async () => {
   const paper = { width: 595, height: 842 };
   expect(await convert({ "ppd:PageSize": "A4", "fit-to-page": "true" })).toMatchObject({ paper, fitToPaper: true });
