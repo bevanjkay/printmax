@@ -174,6 +174,11 @@ job's paper, turned on its side when that gives the pages more room. The options
 documents and `get_print_options` lists them. A laid-out document is sent as a PDF, an image
 included, so in IPP mode the printer has to accept PDF.
 
+On a printer that lists A3, **Cut from A3** offers ready-made layouts for pieces cut from the
+sheet: A6 cards (8 per sheet, or 4 at full size), business cards (10) and DL (6). Eight A6 or six DL
+fill an A3 exactly, so the margin and gaps to cut along leave them at about 96% and 95% of full
+size, which each button says; business cards have room to spare and are never resized.
+
 ## Library
 
 The Library keeps documents for good, each paired with a preset: the timesheet, the price list,

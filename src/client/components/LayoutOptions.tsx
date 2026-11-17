@@ -1,7 +1,8 @@
 import type { DocumentSize, FormField } from "../../shared/types.js";
 import type { OptionValues } from "./OptionsForm.js";
-import { mediaSize } from "../../shared/attributes.js";
-import { cellPosition, LAYOUT_DEFAULTS, layoutFrom, pageInCell, POINTS_PER_MM, sheetFor } from "../../shared/layout.js";
+import { useId } from "react";
+import { mediaSize, paperChoice } from "../../shared/attributes.js";
+import { cellPosition, describeTemplate, isLayoutOption, LAYOUT_DEFAULTS, LAYOUT_TEMPLATES, layoutFrom, layoutOptions, pageInCell, POINTS_PER_MM, sameLayout, sheetFor, templatePaper } from "../../shared/layout.js";
 import { OptionsForm } from "./OptionsForm.js";
 
 /** A4, for the sketch of a sheet whose real size only the server knows. */
@@ -11,6 +12,7 @@ const LONG_SIDE_PX = 112;
 const NUMBERED_CELL_PX = { width: 18, height: 14 };
 
 interface Props {
+  /** The printer's whole form: the layout fields are drawn from it, and a ready-made layout chooses its paper on it. */
   fields: FormField[];
   value: OptionValues;
   onChange: (next: OptionValues) => void;
@@ -50,14 +52,55 @@ function SheetSketch({ value, document }: Pick<Props, "value" | "document">) {
   );
 }
 
-/** The layout fields beside a sketch of the sheet they describe. */
+/**
+ * Layouts for the sizes an office cuts from a larger sheet. Each sets the whole layout and chooses
+ * its paper, so they are only offered on a printer that lists that paper.
+ */
+function ReadyMade({ fields, value, onChange }: Pick<Props, "fields" | "value" | "onChange">) {
+  const labelId = useId();
+  const current = layoutFrom(value);
+  const offered = LAYOUT_TEMPLATES.flatMap((template) => {
+    const paper = paperChoice(fields, template.paper, templatePaper(template));
+    return paper ? [{ template, paper }] : [];
+  });
+  if (offered.length === 0)
+    return null;
+  return (
+    <div className="field">
+      <span className="field-label" id={labelId}>Cut from A3</span>
+      <div className="preset-list" role="group" aria-labelledby={labelId}>
+        {offered.map(({ template, paper }) => {
+          const active = current !== null && sameLayout(current, template.layout) && String(value[paper.name]) === String(paper.value);
+          return (
+            <button
+              key={template.id}
+              type="button"
+              className={`preset-card${active ? " active" : ""}`}
+              aria-pressed={active}
+              onClick={() => onChange({ ...value, ...layoutOptions(template.layout), [paper.name]: paper.value })}
+            >
+              <strong>{template.name}</strong>
+              <span>{describeTemplate(template)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="field-hint">Each fills the sheet with one page over and over, and switches the paper to A3.</span>
+    </div>
+  );
+}
+
+/** Ready-made layouts, then the layout fields beside a sketch of the sheet they describe. */
 export function LayoutOptions({ fields, value, onChange, document }: Props) {
   // The disclosure this sits in is already the "Layout" section, so the fields' own grouping would only nest it again.
-  const flat = fields.map(({ group: _group, ...field }) => field);
+  const flat = fields.filter(f => isLayoutOption(f.name)).map(({ group: _group, ...field }) => field);
   return (
-    <div className="layout-options">
-      <SheetSketch value={value} document={document} />
-      <OptionsForm fields={flat} value={value} onChange={onChange} />
-    </div>
+    <>
+      <ReadyMade fields={fields} value={value} onChange={onChange} />
+      <div className="layout-options">
+        <SheetSketch value={value} document={document} />
+        <OptionsForm fields={flat} value={value} onChange={onChange} />
+      </div>
+    </>
   );
 }

@@ -130,6 +130,24 @@ export const PRIMARY_ATTRIBUTES = ["copies", "sides", "print-color-mode", "media
 /** Option-map keys for PPD choices on printers in PostScript mode: `ppd:<PPD key>`. */
 export const PPD_PREFIX = "ppd:";
 
+/**
+ * The option and value that choose a paper on a printer's form, if the printer offers it: an IPP
+ * `media` whose name states that size, or the PPD's PageSize of that name.
+ */
+export function paperChoice(fields: Array<{ name: string; choices?: Array<{ value: string | number }> }>, name: string, size: { width: number; height: number }): { name: string; value: string | number } | null {
+  for (const field of fields) {
+    const choice = field.name === "media"
+      ? field.choices?.find((c) => {
+          const stated = mediaSize(String(c.value));
+          return stated !== null && Math.abs(stated.width - size.width) < 2 && Math.abs(stated.height - size.height) < 2;
+        })
+      : field.name === `${PPD_PREFIX}PageSize` ? field.choices?.find(c => String(c.value).toLowerCase() === name.toLowerCase()) : undefined;
+    if (choice)
+      return { name: field.name, value: choice.value };
+  }
+  return null;
+}
+
 const PRIMARY_PPD_OPTIONS = ["PageSize", "Duplex", "InputSlot", "MediaType", "ColorType", "ColorModel", "Stapling", "Folding", "BookletPaperSize"];
 
 /** printmax's own PostScript-mode option: shrink pages into the printer's printable area rather than print edge to edge. */

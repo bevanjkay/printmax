@@ -117,7 +117,6 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const stopped = printer.summary.state === "stopped";
   const all = fields ?? [];
   const copiesField = all.filter(f => f.name === "copies");
-  const layoutFields = all.filter(f => isLayoutOption(f.name));
   const summaryNames = all.filter(f => isPrimaryOption(f.name) || isLayoutOption(f.name)).map(f => f.name);
   const quick = all.filter(f => isQuickOption(f.name) && f.name !== "copies");
   const finishing = all.filter(f => isPrimaryOption(f.name) && !isQuickOption(f.name));
@@ -129,7 +128,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
   const summary = fields ? summariseOptions(fields, options, summaryNames) : "";
   const layout = layoutFrom(options);
   // The layout is the job's own in either case, so it sits beside the preset rather than under "Adjust this job".
-  const layoutDisclosure = layoutFields.length > 0 && (
+  const layoutDisclosure = all.some(f => isLayoutOption(f.name)) && (
     <details className="disclosure">
       <summary>
         <IconChevron className="icon chev" />
@@ -137,7 +136,7 @@ function JobForm({ printer, printers, file, isAdmin, phase, onPrinterChange, onS
         <span className="disclosure-note">{`· ${layout ? describeLayout(layout) : "one page per sheet"}`}</span>
       </summary>
       <div className="disclosure-body">
-        <LayoutOptions fields={layoutFields} value={options} onChange={setOptions} document={documentSize} />
+        <LayoutOptions fields={all} value={options} onChange={setOptions} document={documentSize} />
       </div>
     </details>
   );

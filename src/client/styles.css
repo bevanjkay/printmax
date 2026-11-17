@@ -531,6 +531,7 @@ details.disclosure + details.disclosure { margin-top: 4px; }
 .preset-card strong { font-weight: 500; font-size: var(--fs-sm); }
 .preset-card span { font-size: var(--fs-xs); color: var(--text-2); }
 .preset-card .note { color: var(--text-3); }
+button.preset-card { text-align: left; }
 .preset-card.unavailable { border-style: dashed; background: var(--surface-2); cursor: not-allowed; }
 .preset-card.unavailable strong { color: var(--text-2); }
 .preset-card.unavailable span { color: var(--warning); }

@@ -12,8 +12,8 @@ import { imposePdf } from "../src/server/pdf/imposition.js";
 import { ghostscriptAvailable, measurePdf, pdfToPostScript } from "../src/server/ppd/ghostscript.js";
 import { parsePpd } from "../src/server/ppd/parser.js";
 import { jobWarnings, validateJobOptions } from "../src/server/validation.js";
-import { isOwnOption, isPrimaryOption, mediaSize, withoutOwnOptions } from "../src/shared/attributes.js";
-import { cellPosition, describeLayout, LAYOUT_DEFAULTS, layoutErrors, layoutFrom, pageInCell, sheetCount, sheetFor } from "../src/shared/layout.js";
+import { isOwnOption, isPrimaryOption, mediaSize, paperChoice, withoutOwnOptions } from "../src/shared/attributes.js";
+import { cellPosition, describeLayout, describeTemplate, LAYOUT_DEFAULTS, LAYOUT_TEMPLATES, layoutErrors, layoutFrom, layoutOptions, pageInCell, pageScale, sheetCount, sheetFor } from "../src/shared/layout.js";
 import { rasterise } from "./helpers/raster.js";
 
 const ppd = parsePpd(readFileSync(new URL("../fixtures/toshiba-e-studio-excerpt.ppd", import.meta.url), "utf8"));
@@ -113,6 +113,54 @@ describe("layout options", () => {
     expect(describeLayout(layout())).toBe("4 pages per sheet");
     expect(describeLayout(layout({ repeat: true, cropMarks: true }))).toBe("4 of each page per sheet with crop marks");
     expect(describeLayout(layout({ columns: 1, rows: 1, cropMarks: true, borders: true }))).toBe("Crop marks and page borders");
+  });
+});
+
+describe("ready-made layouts", () => {
+  const a3 = { width: 841.89, height: 1190.55 };
+  const template = (id: string) => LAYOUT_TEMPLATES.find(t => t.id === id)!;
+  const piece = (id: string) => ({ width: template(id).size.width * 72 / 25.4, height: template(id).size.height * 72 / 25.4 });
+
+  it("says outright what each does to the size of the piece", () => {
+    // Eight A6 or six DL fill an A3 exactly, so a margin and gaps to cut along cost them a few percent.
+    expect(LAYOUT_TEMPLATES.map(t => `${t.name}: ${describeTemplate(t)}`)).toEqual([
+      "A6 cards: 8 per A3, at 96% of full size",
+      "A6 cards, full size: 4 per A3, full size",
+      "Business cards: 10 per A3, full size",
+      "DL: 6 per A3, at 95% of full size",
+    ]);
+  });
+
+  it("fits every piece on its sheet, upright or sideways artwork alike, and never enlarges one", () => {
+    for (const { id, layout: grid } of LAYOUT_TEMPLATES) {
+      const options = { "ppd:PageSize": "A3", ...layoutOptions(grid) };
+      expect(layoutFrom(options), id).toEqual(grid);
+      expect(validateJobOptions(options, postScript), id).toEqual([]);
+      for (const page of [piece(id), { width: piece(id).height, height: piece(id).width }]) {
+        expect(jobWarnings(options, postScript, page), id).toEqual([]);
+        expect(pageScale(a3, grid, page), id).toBeLessThanOrEqual(1);
+        expect(pageScale(a3, grid, page), id).toBeGreaterThan(0.95);
+      }
+    }
+    // Resized to fit, a business card would be blown up to fill its space, which is why that one is not.
+    expect(pageScale(a3, { ...template("business-cards").layout, fit: true }, piece("business-cards"))).toBeGreaterThan(1.4);
+  });
+
+  it("leaves crop marks and borders off until they are asked for, ready-made or not", () => {
+    for (const profile of [postScript, ipp]) {
+      const fields = formFor(profile);
+      expect(fields.find(f => f.name === "layout-crop-marks")?.default).toBe("false");
+      expect(fields.find(f => f.name === "layout-borders")?.default).toBe("false");
+    }
+    expect(LAYOUT_TEMPLATES.filter(t => t.layout.cropMarks || t.layout.borders)).toEqual([]);
+    expect(describeLayout(template("a6").layout)).toBe("8 of each page per sheet");
+  });
+
+  it("chooses its paper on the printer's own form, and is not offered where the printer has none", () => {
+    expect(paperChoice(formFor(postScript), "A3", a3)).toEqual({ name: "ppd:PageSize", value: "A3" });
+    expect(paperChoice(formFor(ipp), "A3", a3)).toEqual({ name: "media", value: "iso_a3_297x420mm" });
+    const letterOnly = [{ name: "media", choices: [{ value: "na_letter_8.5x11in" }, { value: "na_legal_8.5x14in" }] }];
+    expect(paperChoice(letterOnly, "A3", a3)).toBeNull();
   });
 });
 
@@ -261,6 +309,23 @@ describe.skipIf(!(await ghostscriptAvailable()))("what an imposed sheet draws", 
     finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("cuts business cards from an A3 sheet at their true size", async () => {
+    const card = { width: 90 * 72 / 25.4, height: 55 * 72 / 25.4 };
+    const cards = LAYOUT_TEMPLATES.find(t => t.id === "business-cards")!.layout;
+    const sheet = await rasterise(await imposePdf(await colouredPages([RED], card), cards, { width: 841.89, height: 1190.55 }));
+    expect([sheet.width, sheet.height]).toEqual([842, 1191]);
+    // Two columns of 90 mm and a 2 mm gap, centred: the block of cards is 182 mm wide and no wider.
+    const [left, right] = [(841.89 - (card.width * 2 + 2 * 72 / 25.4)) / 2, (841.89 + (card.width * 2 + 2 * 72 / 25.4)) / 2];
+    expect(sheet.at(left + 4, 595)).toEqual(RED);
+    expect(sheet.at(right - 4, 595)).toEqual(RED);
+    expect(sheet.at(left - 20, 595)).toEqual(WHITE);
+    expect(sheet.at(right + 20, 595)).toEqual(WHITE);
+    // Five rows of 55 mm with four gaps, centred top to bottom.
+    const top = (1190.55 + (card.height * 5 + 4 * 2 * 72 / 25.4)) / 2;
+    expect(sheet.at(421 - card.width / 2, top - 4)).toEqual(RED);
+    expect(sheet.at(421 - card.width / 2, top + 20)).toEqual(WHITE);
   });
 
   it("marks where to cut and rules a border around each page when asked", async () => {

@@ -172,6 +172,14 @@ export function sheetFor(paper: Size, layout: Layout, page: Size): Size {
   return room(turned, layout, page) > room(paper, layout, page) ? turned : paper;
 }
 
+/**
+ * How much of its own size a page keeps on this paper: 1 when the layout leaves pages alone, and
+ * otherwise whatever fills its space, which enlarges a page as readily as it shrinks one.
+ */
+export function pageScale(paper: Size, layout: Layout, page: Size): number {
+  return layout.fit ? room(sheetFor(paper, layout, page), layout, page) : 1;
+}
+
 /** Whether the margin and gaps leave any space for pages, whichever way the paper is turned. */
 export function hasRoom(paper: Size, layout: Layout): boolean {
   return [paper, { width: paper.height, height: paper.width }].some((sheet) => {
@@ -188,4 +196,75 @@ export function describeLayout(layout: Layout): string {
     return marks.replace(/^\w/, c => c.toUpperCase());
   const pages = layout.repeat ? `${perSheet} of each page per sheet` : `${perSheet} pages per sheet`;
   return marks ? `${pages} with ${marks}` : pages;
+}
+
+/** The option-map form of a layout, as a form would hold it. */
+export function layoutOptions(layout: Layout): Record<string, string | number> {
+  return {
+    [LAYOUT.columns]: layout.columns,
+    [LAYOUT.rows]: layout.rows,
+    [LAYOUT.order]: layout.order,
+    [LAYOUT.repeat]: String(layout.repeat),
+    [LAYOUT.fit]: String(layout.fit),
+    [LAYOUT.rotate]: String(layout.rotate),
+    [LAYOUT.margin]: layout.margin,
+    [LAYOUT.gap]: layout.gap,
+    [LAYOUT.cropMarks]: String(layout.cropMarks),
+    [LAYOUT.borders]: String(layout.borders),
+  };
+}
+
+export function sameLayout(a: Layout, b: Layout): boolean {
+  return (Object.keys(a) as Array<keyof Layout>).every(key => a[key] === b[key]);
+}
+
+/** ISO paper the ready-made layouts are cut from, in millimetres. */
+export const ISO_PAPER = { A3: { width: 297, height: 420 } } as const;
+
+/** A ready-made layout for a finished size that is cut from a larger sheet. */
+export interface LayoutTemplate {
+  id: string;
+  name: string;
+  /** The paper the grid was worked out for. */
+  paper: keyof typeof ISO_PAPER;
+  /** The finished piece as it is cut from the sheet, in millimetres. */
+  size: Size;
+  layout: Layout;
+}
+
+/** One page over and over, turned to suit its space. Crop marks stay off, as they are everywhere until asked for. */
+function cutApart(columns: number, rows: number, fit: boolean): Layout {
+  return { ...LAYOUT_DEFAULTS, columns, rows, fit, repeat: true, rotate: true };
+}
+
+/**
+ * Eight A6 or six DL fill an A3 sheet exactly, so with a margin and gaps to cut along they come out
+ * a little under size; the full-size A6 fits four. Business cards have room to spare and are never
+ * resized, which would enlarge them to fill their space.
+ */
+export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
+  { id: "a6", name: "A6 cards", paper: "A3", size: { width: 105, height: 148 }, layout: cutApart(2, 4, true) },
+  { id: "a6-full-size", name: "A6 cards, full size", paper: "A3", size: { width: 105, height: 148 }, layout: cutApart(2, 2, false) },
+  { id: "business-cards", name: "Business cards", paper: "A3", size: { width: 90, height: 55 }, layout: cutApart(2, 5, false) },
+  { id: "dl", name: "DL", paper: "A3", size: { width: 99, height: 210 }, layout: cutApart(2, 3, true) },
+];
+
+function points(size: Size): Size {
+  return { width: size.width * POINTS_PER_MM, height: size.height * POINTS_PER_MM };
+}
+
+export function templatePaper(template: LayoutTemplate): Size {
+  return points(ISO_PAPER[template.paper]);
+}
+
+/** How much of its finished size a template's piece keeps on its paper. */
+export function templateScale(template: LayoutTemplate): number {
+  return pageScale(templatePaper(template), template.layout, points(template.size));
+}
+
+/** What a template gives, with its cost in size said outright: "8 per A3, at 96% of full size". */
+export function describeTemplate(template: LayoutTemplate): string {
+  const perSheet = `${template.layout.columns * template.layout.rows} per ${template.paper}`;
+  const scale = Math.round(templateScale(template) * 100);
+  return scale === 100 ? `${perSheet}, full size` : `${perSheet}, at ${scale}% of full size`;
 }
