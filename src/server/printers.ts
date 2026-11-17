@@ -4,7 +4,7 @@ import type { PrinterTarget } from "./ipp/client.js";
 import type { IppAttributes, IppValue } from "./ipp/codec.js";
 import type { ParsedPpd } from "./ppd/parser.js";
 import { unlinkSync } from "node:fs";
-import { isOwnOption } from "../shared/attributes.js";
+import { isOwnOption, PPD_PREFIX } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
@@ -13,6 +13,7 @@ import { IppStatusError, IppTransportError, toHttpUrl } from "./ipp/client.js";
 import { attrValue, attrValues } from "./ipp/codec.js";
 import { getPrinterAttributes } from "./ipp/operations.js";
 import { buildAttributes, mergeCaps, validateOptions } from "./ipp/options.js";
+import { validatePpdOptions, withPpdDefaults } from "./ppd/form.js";
 import { parsePpd } from "./ppd/parser.js";
 
 export interface PrinterRow {
@@ -38,7 +39,7 @@ export interface PrinterProfile {
   caps: IppAttributes;
   ppd: ParsedPpd | null;
   mode: PrintMode;
-  /** printmax's own options set for this printer, which the IPP capabilities cannot describe. */
+  /** printmax's own options and `ppd:` driver options set for this printer, which the IPP capabilities cannot describe. */
   optionDefaults: Record<string, unknown>;
 }
 
@@ -65,7 +66,9 @@ export function optionDefaultsFor(printer: PrinterRow): Record<string, unknown> 
 }
 
 export function profileFor(printer: PrinterRow): PrinterProfile {
-  return { caps: capsFor(printer), ppd: parsedPpdFor(printer), mode: printer.print_mode, optionDefaults: optionDefaultsFor(printer) };
+  const optionDefaults = optionDefaultsFor(printer);
+  const ppd = parsedPpdFor(printer);
+  return { caps: capsFor(printer), ppd: ppd && withPpdDefaults(ppd, optionDefaults), mode: printer.print_mode, optionDefaults };
 }
 
 export function setPpd(db: Db, id: number, text: unknown): PrinterRow {
@@ -237,8 +240,8 @@ export function setOverrides(db: Db, id: number, overrides: unknown): PrinterRow
 
 /**
  * Sets this printer's form defaults (e.g. media = A4) as `<attribute>-default` overrides.
- * Values must be ones the printer supports; an empty value removes the override so the
- * printer's own default applies again.
+ * `ppd:` driver options are kept beside printmax's own. Values must be ones the printer
+ * supports; an empty value removes the override so the printer's own default applies again.
  */
 export function setDefaults(db: Db, id: number, defaults: Record<string, unknown>): PrinterRow {
   const printer = requirePrinter(db, id);
@@ -255,6 +258,17 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
         own[name] = String(value);
       else
         problems.push(`"${name}" must be true or false`);
+      continue;
+    }
+    if (name.startsWith(PPD_PREFIX)) {
+      const ppd = parsedPpdFor(printer);
+      const errors = ppd ? validatePpdOptions(ppd, { [name]: value }) : [`"${name}" needs a PPD on this printer`];
+      if (value === null || value === undefined || value === "")
+        delete own[name];
+      else if (errors.length > 0)
+        problems.push(...errors);
+      else
+        own[name] = String(value);
       continue;
     }
     if (!/^[a-z][a-z0-9-]*$/.test(name) || name.endsWith("-default"))
