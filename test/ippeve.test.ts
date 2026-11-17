@@ -137,7 +137,9 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
       const booklet = { name: "booklet.pdf", content: readFileSync(new URL("../fixtures/booklet-8-pages.pdf", import.meta.url)) };
       // An image goes the same way, by way of a PDF of its own.
       const photo = { name: "photo.png", content: flatPng(400, 300, [255, 0, 0]) };
-      for (const [file, options] of [[booklet, { "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 2 }], [photo, {}]] as const) {
+      // A layout places the pages on sheets before either of them is converted.
+      const twoUp = { "layout-columns": 2, "layout-rows": 1, "layout-crop-marks": "true" };
+      for (const [file, options] of [[booklet, { "ppd:Stapling": "SS", "ppd:Folding": "True", "ppd:BookletPaperSize": "A4", "copies": 2 }], [photo, {}], [photo, twoUp]] as const) {
         const res = await app.inject(asAdmin({
           method: "POST",
           url: "/api/jobs",
@@ -166,7 +168,7 @@ describe.skipIf(!available)("end to end against ippeveprinter", () => {
     finally {
       await app.inject(asAdmin({ method: "DELETE", url: `/api/printers/${printerId}/ppd` }));
     }
-  });
+  }, 60_000);
 
   it("refuses options the printer does not support before anything is sent", async () => {
     const printerId = await firstPrinterId();

@@ -1,5 +1,6 @@
 import type { DocumentSize, FormField } from "../shared/types.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { describeLayout, isLayoutOption, layoutFrom } from "../shared/layout.js";
 
 export type OptionValues = Record<string, unknown>;
 
@@ -209,11 +210,14 @@ const ON_LABELS = new Set(["on", "true", "yes"]);
  * Plain-English summary of the options that matter, e.g. "2 copies · Double-sided · A4 · Saddle Stitch".
  * Values that mean "off" or "default" are left out, and a switched-on boolean reads as its option's
  * name ("Folding") rather than "On". With `changesOnly`, values equal to the printer's default are
- * also left out, which is what a preset card should show.
+ * also left out, which is what a preset card should show. A layout reads as one phrase rather than
+ * option by option, and is given whenever `names` includes any of its options.
  */
 export function summariseOptions(fields: FormField[], value: OptionValues, names: string[], opts: { changesOnly?: boolean } = {}): string {
   const parts: string[] = [];
   for (const name of names) {
+    if (isLayoutOption(name))
+      continue;
     const field = fields.find(f => f.name === name);
     const v = opts.changesOnly ? value[name] : value[name] ?? field?.default;
     if (!field || v === undefined || v === "")
@@ -235,6 +239,9 @@ export function summariseOptions(fields: FormField[], value: OptionValues, names
       parts.push(ON_LABELS.has(key) ? field.label : contextualise(name, label));
     }
   }
+  const layout = names.some(isLayoutOption) ? layoutFrom(value) : null;
+  if (layout)
+    parts.push(describeLayout(layout));
   return parts.join(" · ");
 }
 

@@ -163,6 +163,17 @@ and switch the printer to **PostScript via PPD**. From then on:
 It is opt-in per printer and reversible; plain IPP remains the default. The proof for the
 Toshiba was an 8-page A5 booklet that came out imposed and folded (`fixtures/booklet-8-pages.pdf`).
 
+## Page layout (several pages to a sheet)
+
+The Print page's **Layout** section places pages on the sheet before the document is sent, so it
+works the same on every printer and in either mode: columns and rows, the order the pages run in,
+**Repeat each page** (a sheet of one flyer, to cut apart), a margin and a gap, crop marks and page
+borders. Pages are scaled to their space unless **Resize pages to fit** is off, and the sheet is the
+job's paper, turned on its side when that gives the pages more room. The options are printmax's own
+(`layout-columns`, `layout-rows` and so on in the option map), so they save into presets and Library
+documents and `get_print_options` lists them. A laid-out document is sent as a PDF, an image
+included, so in IPP mode the printer has to accept PDF.
+
 ## Library
 
 The Library keeps documents for good, each paired with a preset: the timesheet, the price list,
@@ -249,7 +260,8 @@ with OAuth, which printmax does not offer.
   constraint/resolver evaluation
 - `src/server/` — SQLite (`node:sqlite`), auth, sessions and API tokens, printers, presets, jobs,
   worker, capability diffing, DNS-SD discovery, MCP server, Fastify app
-- `src/shared/` — DTOs, IPP enum tables, and the attribute label/widget table
+- `src/server/pdf/` — image to PDF, and page layout (imposition), both with `pdf-lib`
+- `src/shared/` — DTOs, IPP enum tables, the attribute label/widget table, and the layout options
 - `src/client/` — React front end, served static by the server in production
 - `fixtures/` — verbatim Get-Printer-Attributes dumps used as test data
 

@@ -6,6 +6,7 @@ import type { ParsedPpd } from "./ppd/parser.js";
 import { unlinkSync } from "node:fs";
 import { isOwnOption, PPD_PREFIX } from "../shared/attributes.js";
 import { enumName } from "../shared/enums.js";
+import { isLayoutOption } from "../shared/layout.js";
 import { diffCaps, isEmptyDiff, recordCapsChange } from "./capsdiff.js";
 import { now } from "./db.js";
 import { HttpError, notFound } from "./errors.js";
@@ -250,6 +251,10 @@ export function setDefaults(db: Db, id: number, defaults: Record<string, unknown
   const own = optionDefaultsFor(printer);
   const problems: string[] = [];
   for (const [name, value] of Object.entries(defaults)) {
+    if (isLayoutOption(name)) {
+      problems.push(`"${name}" belongs to a job or a preset, not to a printer`);
+      continue;
+    }
     // printmax's own options are not IPP attributes, so they are kept beside the capability overrides.
     if (isOwnOption(name)) {
       if (value === null || value === undefined || value === "")

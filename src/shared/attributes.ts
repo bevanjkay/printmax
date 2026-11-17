@@ -2,6 +2,8 @@
  * The one hand-maintained table: how to present IPP job template attributes.
  * Everything else about a printer's options comes from the printer itself.
  */
+import { isLayoutOption } from "./layout.js";
+
 export type Widget = "select" | "multiselect" | "number" | "text" | "password";
 
 export interface AttributeUi {
@@ -95,6 +97,15 @@ const KEYWORD_LABELS: Record<string, string> = {
 
 const MEDIA_RE = /^(?:iso|na|jis|jpn|om|prc|roc|asme|custom)_([a-z0-9.+-]+)_(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(mm|in)$/;
 
+/** The sheet a PWG self-describing media name states, in points; null for a name that carries no size. */
+export function mediaSize(name: string): { width: number; height: number } | null {
+  const media = MEDIA_RE.exec(name);
+  if (!media)
+    return null;
+  const points = media[4] === "mm" ? 72 / 25.4 : 72;
+  return { width: Number(media[2]) * points, height: Number(media[3]) * points };
+}
+
 /** Turns a PWG keyword or media size name into something a person would recognise. */
 export function keywordLabel(value: string | number): string {
   const text = String(value);
@@ -130,15 +141,16 @@ export const FIT_TO_PAGE = "fit-to-page";
 /** printmax's own option, in either mode: convert the document to greyscale, so the printer has no colour to print whatever its colour mode. */
 export const BLACK_AND_WHITE = "black-and-white";
 
-const OWN_OPTIONS = new Set([FIT_TO_PAGE, FIT_TO_MARGINS, BLACK_AND_WHITE]);
+const OWN_TOGGLES = new Set([FIT_TO_PAGE, FIT_TO_MARGINS, BLACK_AND_WHITE]);
 
+/** printmax's own options: its toggles, and the `layout-` options that place pages on a sheet. */
 export function isOwnOption(name: string): boolean {
-  return OWN_OPTIONS.has(name);
+  return OWN_TOGGLES.has(name) || isLayoutOption(name);
 }
 
 /** The job's IPP attributes: its options less printmax's own, which the printer has never heard of. */
 export function withoutOwnOptions(options: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(options).filter(([name]) => !OWN_OPTIONS.has(name)));
+  return Object.fromEntries(Object.entries(options).filter(([name]) => !isOwnOption(name)));
 }
 
 /**
@@ -160,7 +172,7 @@ export function isQuickOption(name: string): boolean {
 }
 
 export function isPrimaryOption(name: string): boolean {
-  if (OWN_OPTIONS.has(name))
+  if (OWN_TOGGLES.has(name))
     return true;
   return name.startsWith(PPD_PREFIX) ? PRIMARY_PPD_OPTIONS.includes(name.slice(PPD_PREFIX.length)) : PRIMARY_ATTRIBUTES.includes(name);
 }
