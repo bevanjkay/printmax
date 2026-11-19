@@ -8,10 +8,30 @@ import { useAsyncError } from "../util.js";
 interface Props {
   needsSetup: boolean;
   setupTokenRequired: boolean;
+  googleSignIn: boolean;
   onSignedIn: (user: UserDto) => void;
 }
 
-export function LoginPage({ needsSetup, setupTokenRequired, onSignedIn }: Props) {
+const GOOGLE_ERRORS: Record<string, string> = {
+  expired: "That Google sign-in timed out. Try again.",
+  cancelled: "Google sign-in was cancelled.",
+  rejected: "Google sign-in didn't work. Try again.",
+  unverified: "That Google account has no verified email address.",
+  domain: "That Google account isn't allowed to use printmax. Sign in with your work account.",
+  conflict: "That email is already linked to a different Google account. Ask an administrator.",
+};
+
+/** The Google callback lands back here with a refusal code in the query string; take it once and tidy the address bar. */
+function takeGoogleError(): string | null {
+  const code = new URLSearchParams(window.location.search).get("google_error");
+  if (code === null)
+    return null;
+  window.history.replaceState(null, "", window.location.pathname);
+  return GOOGLE_ERRORS[code] ?? GOOGLE_ERRORS.rejected!;
+}
+
+export function LoginPage({ needsSetup, setupTokenRequired, googleSignIn, onSignedIn }: Props) {
+  const [googleError] = useState(takeGoogleError);
   const [name, setName] = useState("");
   const [setupToken, setSetupToken] = useState("");
   const [email, setEmail] = useState("");
@@ -44,7 +64,14 @@ export function LoginPage({ needsSetup, setupTokenRequired, onSignedIn }: Props)
             printmax
           </div>
           <h1>{needsSetup ? "Create the admin account" : "Sign in"}</h1>
-          <p className="lede">{needsSetup ? "No accounts exist yet. This first account administers printers, presets and users." : "Use the account an administrator created for you."}</p>
+          <p className="lede">{needsSetup ? "No accounts exist yet. This first account administers printers, presets and users." : googleSignIn ? "Use your work Google account, or the account an administrator created for you." : "Use the account an administrator created for you."}</p>
+          {!needsSetup && googleSignIn && (
+            <>
+              <a className="btn btn-lg btn-block" href="/api/auth/google">Sign in with Google</a>
+              {googleError && <Notice tone="error">{googleError}</Notice>}
+              <p className="or">or</p>
+            </>
+          )}
           {needsSetup && (
             <Field label="Name">
               <input className="control" required autoComplete="name" value={name} onChange={e => setName(e.target.value)} />

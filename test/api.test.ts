@@ -40,7 +40,7 @@ describe("aPI", () => {
 
   describe("setup and sessions", () => {
     it("reports that setup is needed and refuses protected routes", async () => {
-      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json()).toEqual({ user: null, needsSetup: true, setupTokenRequired: false });
+      expect((await app.inject({ method: "GET", url: "/api/auth/me" })).json()).toEqual({ user: null, needsSetup: true, setupTokenRequired: false, googleSignIn: false });
       expect((await app.inject({ method: "GET", url: "/api/printers" })).statusCode).toBe(401);
     });
 
