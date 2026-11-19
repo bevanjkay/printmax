@@ -13,9 +13,11 @@ interface Props {
 }
 
 const GOOGLE_ERRORS: Record<string, string> = {
+  setup: "Create the admin account before anyone signs in with Google.",
   expired: "That Google sign-in timed out. Try again.",
   cancelled: "Google sign-in was cancelled.",
   rejected: "Google sign-in didn't work. Try again.",
+  unavailable: "printmax couldn't reach Google. Try again in a moment.",
   unverified: "That Google account has no verified email address.",
   domain: "That Google account isn't allowed to use printmax. Sign in with your work account.",
   conflict: "That email is already linked to a different Google account. Ask an administrator.",
@@ -27,7 +29,7 @@ function takeGoogleError(): string | null {
   if (code === null)
     return null;
   window.history.replaceState(null, "", window.location.pathname);
-  return GOOGLE_ERRORS[code] ?? GOOGLE_ERRORS.rejected!;
+  return Object.hasOwn(GOOGLE_ERRORS, code) ? GOOGLE_ERRORS[code]! : GOOGLE_ERRORS.rejected!;
 }
 
 export function LoginPage({ needsSetup, setupTokenRequired, googleSignIn, onSignedIn }: Props) {

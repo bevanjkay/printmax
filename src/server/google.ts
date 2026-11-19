@@ -28,7 +28,7 @@ export interface GoogleIdentity {
 }
 
 /** Why a Google sign-in was refused. Only the code reaches the browser, so a crafted link cannot put words on the sign-in page. */
-export type GoogleRefusalCode = "expired" | "cancelled" | "rejected" | "unverified" | "domain" | "conflict";
+export type GoogleRefusalCode = "setup" | "expired" | "cancelled" | "rejected" | "unavailable" | "unverified" | "domain" | "conflict";
 
 export class GoogleRefusal extends Error {
   constructor(public readonly code: GoogleRefusalCode, message: string) {
@@ -79,6 +79,8 @@ export async function exchangeCode(cfg: GoogleSignIn, code: string, flow: Google
       grant_type: "authorization_code",
       code_verifier: flow.verifier,
     }).toString(),
+  }).catch((err: unknown) => {
+    throw new GoogleRefusal("unavailable", `could not reach Google: ${err instanceof Error ? err.message : String(err)}`);
   });
   const body = await res.json().catch(() => ({})) as { id_token?: unknown };
   if (!res.ok || typeof body.id_token !== "string")

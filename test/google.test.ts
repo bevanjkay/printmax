@@ -26,7 +26,7 @@ describe("sign in with Google", () => {
   let claims: Record<string, unknown>;
   let tokenRequests: URLSearchParams[];
 
-  async function start(google: Partial<GoogleSignIn> | null = {}) {
+  async function start(google: Partial<GoogleSignIn> | null = {}, { setup = true } = {}) {
     dir = await mkdtemp(path.join(tmpdir(), "printmax-google-"));
     db = openDb(":memory:");
     tokenRequests = [];
@@ -46,7 +46,8 @@ describe("sign in with Google", () => {
         ...google,
       },
     });
-    await app.inject({ method: "POST", url: "/api/auth/setup", payload: { name: "Admin", email: "admin@reside.church", password: "correct horse" } });
+    if (setup)
+      await app.inject({ method: "POST", url: "/api/auth/setup", payload: { name: "Admin", email: "admin@reside.church", password: "correct horse" } });
   }
 
   /** Runs the redirect out to Google and back, with the claims Google would put in the ID token. */
@@ -154,6 +155,26 @@ describe("sign in with Google", () => {
     expect(back.headers.location).toMatch(/^\/\?google_error=[a-z]+$/);
     expect(session).toBeUndefined();
     expect(tokenRequests).toHaveLength(0);
+  });
+
+  it("stays closed until the first administrator exists, so setup cannot be locked out", async () => {
+    await start({}, { setup: false });
+    const out = await app.inject({ method: "GET", url: "/api/auth/google" });
+    expect(out.headers.location).toBe("/?google_error=setup");
+    const flow = Buffer.from(JSON.stringify({ state: "s", nonce: "n", verifier: "v" })).toString("base64url");
+    claims = { iss: "https://accounts.google.com", aud: CLIENT_ID, sub: "1", email: "pat@reside.church", email_verified: true, hd: "reside.church", nonce: "n", exp: Math.floor(Date.now() / 1000) + 600 };
+    const back = await app.inject({ method: "GET", url: "/api/auth/google/callback?code=abc&state=s", headers: { cookie: `printmax_google=${flow}` } });
+    expect(back.headers.location).toBe("/?google_error=setup");
+    expect(tokenRequests).toHaveLength(0);
+    const setup = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { name: "Admin", email: "admin@reside.church", password: "correct horse" } });
+    expect(setup.statusCode).toBe(201);
+  });
+
+  it("sends the browser back to the sign-in page when Google cannot be reached", async () => {
+    await start({ fetch: async () => Promise.reject(new TypeError("fetch failed")) });
+    const { back, session } = await signIn();
+    expect(back.headers.location).toBe("/?google_error=unavailable");
+    expect(session).toBeUndefined();
   });
 
   it("refuses a callback with no flow cookie", async () => {

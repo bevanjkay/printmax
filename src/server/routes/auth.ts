@@ -82,6 +82,8 @@ export function authRoutes(app: FastifyInstance, db: Db, opts: { setupToken: str
 
   /** The flow's secrets ride in a cookie only this browser holds, which is what ties Google's answer to the browser that asked. */
   app.get("/api/auth/google", attempts, async (req, reply) => {
+    if (countUsers(db) === 0)
+      return reply.redirect("/?google_error=setup");
     const flow = startFlow();
     reply.setCookie(GOOGLE_COOKIE, Buffer.from(JSON.stringify(flow)).toString("base64url"), {
       path: GOOGLE_COOKIE_PATH,
@@ -107,6 +109,9 @@ export function authRoutes(app: FastifyInstance, db: Db, opts: { setupToken: str
         throw new GoogleRefusal("expired", "the Google sign-in timed out or was started elsewhere; try again");
       if (typeof query.code !== "string")
         throw new GoogleRefusal("cancelled", "Google sign-in was cancelled");
+      // The first account must come through setup and its token, or nobody could ever become an administrator.
+      if (countUsers(db) === 0)
+        throw new GoogleRefusal("setup", "printmax has no administrator yet");
       const identity = identityFromIdToken(google, await exchangeCode(google, query.code, flow), flow.nonce);
       startSession(db, req, reply, googleUser(db, identity).id);
       return reply.redirect("/");
