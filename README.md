@@ -54,6 +54,9 @@ Every variable has a default; set them in the environment or a `.env` file next 
 | `STORED_DIR` | `/data/stored` | Library documents, kept until deleted |
 | `SETUP_TOKEN` | generated | Required by the first-run setup page; a random one is printed in the log when unset |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` from a reverse proxy; set `false` when clients reach the app directly, or a CIDR list |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | unset | A Google OAuth web client; with the two below, turns on "Sign in with Google" |
+| `GOOGLE_ALLOWED_DOMAINS` | unset | Comma-separated Google Workspace domains whose people may sign in; a first sign-in registers them as users |
+| `PUBLIC_URL` | unset | The address people open printmax at; `<PUBLIC_URL>/api/auth/google/callback` is the client's redirect URI |
 
 The app runs as the unprivileged `node` user (uid 1000). The container starts as root only to
 hand `/data` to that user, so a bind-mounted host directory or a volume created by an older image
@@ -85,6 +88,10 @@ or WebSockets.
   browser never sends on its own. Creating and revoking them needs a session, not a token.
 - Sign-in and setup are rate limited to 10 attempts per client IP per minute (from
   trusted `X-Forwarded-For` when `TRUST_PROXY` is configured).
+- Sign in with Google accepts only a verified email on an allowed domain whose account belongs to a
+  Workspace on one of those domains (the ID token's `hd`), so a personal Google account made on a
+  work address is refused. The flow uses PKCE, a state and a nonce held in a short-lived cookie.
+  An existing account with the same email is linked and keeps its role; anyone else is a user.
 - The first-run setup page needs the token printed in the log at startup, so an instance exposed
   before its admin exists cannot be claimed by a passer-by.
 - Responses carry a self-only Content Security Policy and the usual Helmet headers; the app loads

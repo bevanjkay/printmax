@@ -13,6 +13,7 @@ export interface UserRow {
   password_hash: string;
   role: "admin" | "user";
   created_at: string;
+  google_sub: string | null;
 }
 
 export interface ApiTokenRow {
@@ -193,15 +194,15 @@ export function login(db: Db, email: unknown, password: unknown): UserRow {
   if (typeof email !== "string" || typeof password !== "string")
     throw new HttpError(400, "email and password are required");
   const user = findUserByEmail(db, email);
-  // Always run the hash so a missing user takes as long as a wrong password.
-  const ok = user ? verifyPassword(password, user.password_hash) : (hashPassword(password), false);
+  // Always run the hash so a missing user, or one who only signs in with Google, takes as long as a wrong password.
+  const ok = user?.password_hash ? verifyPassword(password, user.password_hash) : (hashPassword(password), false);
   if (!user || !ok)
     throw new HttpError(401, "incorrect email or password");
   return user;
 }
 
 export function toUserDto(user: UserRow): UserDto {
-  return { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.created_at };
+  return { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.created_at, hasPassword: user.password_hash !== "" };
 }
 
 declare module "fastify" {

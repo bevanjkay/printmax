@@ -148,6 +148,10 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX api_tokens_user ON api_tokens(user_id);
   `,
+  `
+  ALTER TABLE users ADD COLUMN google_sub TEXT;
+  CREATE UNIQUE INDEX users_google_sub ON users(google_sub);
+  `,
 ];
 
 export function openDb(file: string): Db {

@@ -149,20 +149,22 @@ export function AccountPage({ user }: { user: UserDto }) {
   return (
     <div className="split narrow-aside">
       <div className="stack">
-        <form onSubmit={submit}>
-          <Panel title="Change password" footer={<Button type="submit" variant="primary" loading={busy} disabled={!current || next.length < 8}>Change password</Button>}>
-            <div className="panel-body">
-              <Field label="Current password">
-                <input className="control" type="password" required autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)} />
-              </Field>
-              <Field label="New password" hint="At least 8 characters. Other devices signed in as you are signed out; API tokens keep working.">
-                <input className="control" type="password" required minLength={8} autoComplete="new-password" value={next} onChange={e => setNext(e.target.value)} />
-              </Field>
-              {done && <Notice tone="success">Password changed.</Notice>}
-              {error && <Notice tone="error">{error}</Notice>}
-            </div>
-          </Panel>
-        </form>
+        {user.hasPassword && (
+          <form onSubmit={submit}>
+            <Panel title="Change password" footer={<Button type="submit" variant="primary" loading={busy} disabled={!current || next.length < 8}>Change password</Button>}>
+              <div className="panel-body">
+                <Field label="Current password">
+                  <input className="control" type="password" required autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)} />
+                </Field>
+                <Field label="New password" hint="At least 8 characters. Other devices signed in as you are signed out; API tokens keep working.">
+                  <input className="control" type="password" required minLength={8} autoComplete="new-password" value={next} onChange={e => setNext(e.target.value)} />
+                </Field>
+                {done && <Notice tone="success">Password changed.</Notice>}
+                {error && <Notice tone="error">{error}</Notice>}
+              </div>
+            </Panel>
+          </form>
+        )}
         <ApiTokens />
       </div>
       <Panel title="Signed in as">

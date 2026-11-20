@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { Db } from "./db.js";
+import type { GoogleSignIn } from "./google.js";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import fastifyCookie from "@fastify/cookie";
@@ -34,6 +35,8 @@ export interface AppOptions {
   trustProxy?: boolean | string | string[];
   /** Attempts allowed per client IP per minute on sign-in and setup. */
   loginAttemptsPerMinute?: number;
+  /** Sign in with Google; off when unset. */
+  google?: GoogleSignIn | null;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -108,7 +111,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get("/api/health", async () => ({ ok: true }));
-  authRoutes(app, db, { setupToken: opts.setupToken ?? null });
+  authRoutes(app, db, { setupToken: opts.setupToken ?? null, google: opts.google ?? null });
 
   await app.register(async (scope) => {
     scope.addHook("onRequest", requireUser);

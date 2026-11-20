@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AuthState } from "../../shared/types.js";
 import type { Db } from "../db.js";
+import type { GoogleFlow, GoogleSignIn } from "../google.js";
+import { Buffer } from "node:buffer";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { countUsers, createSession, createUser, deleteSession, login, SESSION_COOKIE, setPassword, toUserDto, verifyPassword } from "../auth.js";
 import { HttpError } from "../errors.js";
+import { authorizationUrl, exchangeCode, GoogleRefusal, googleUser, identityFromIdToken, startFlow } from "../google.js";
 
 function sameSecret(a: string, b: string): boolean {
   return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
@@ -11,6 +14,9 @@ function sameSecret(a: string, b: string): boolean {
 
 /** Sign-in and setup share one per-IP budget so password guessing is slow from any one client. */
 const attempts = { config: { rateLimit: {} } };
+
+const GOOGLE_COOKIE = "printmax_google";
+const GOOGLE_COOKIE_PATH = "/api/auth/google";
 
 function startSession(db: Db, req: FastifyRequest, reply: FastifyReply, userId: number): void {
   const { token, expiresAt } = createSession(db, userId);
@@ -23,13 +29,14 @@ function startSession(db: Db, req: FastifyRequest, reply: FastifyReply, userId: 
   });
 }
 
-export function authRoutes(app: FastifyInstance, db: Db, opts: { setupToken: string | null }): void {
+export function authRoutes(app: FastifyInstance, db: Db, opts: { setupToken: string | null; google: GoogleSignIn | null }): void {
   app.get("/api/auth/me", async (req): Promise<AuthState> => {
     const needsSetup = countUsers(db) === 0;
     return {
       user: req.user ? toUserDto(req.user) : null,
       needsSetup,
       setupTokenRequired: needsSetup && opts.setupToken !== null,
+      googleSignIn: opts.google !== null,
     };
   });
 
@@ -67,5 +74,53 @@ export function authRoutes(app: FastifyInstance, db: Db, opts: { setupToken: str
     setPassword(db, req.user.id, body.newPassword);
     startSession(db, req, reply, req.user.id);
     return reply.code(204).send();
+  });
+
+  const google = opts.google;
+  if (!google)
+    return;
+
+  /** The flow's secrets ride in a cookie only this browser holds, which is what ties Google's answer to the browser that asked. */
+  app.get("/api/auth/google", attempts, async (req, reply) => {
+    if (countUsers(db) === 0)
+      return reply.redirect("/?google_error=setup");
+    const flow = startFlow();
+    reply.setCookie(GOOGLE_COOKIE, Buffer.from(JSON.stringify(flow)).toString("base64url"), {
+      path: GOOGLE_COOKIE_PATH,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: req.protocol === "https",
+      maxAge: 600,
+    });
+    return reply.redirect(authorizationUrl(google, flow));
+  });
+
+  app.get("/api/auth/google/callback", attempts, async (req, reply) => {
+    const query = req.query as Record<string, unknown>;
+    const raw = req.cookies[GOOGLE_COOKIE];
+    reply.clearCookie(GOOGLE_COOKIE, { path: GOOGLE_COOKIE_PATH });
+    try {
+      let flow: GoogleFlow | undefined;
+      try {
+        flow = raw ? JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as GoogleFlow : undefined;
+      }
+      catch {}
+      if (!flow?.state || typeof query.state !== "string" || !sameSecret(query.state, flow.state))
+        throw new GoogleRefusal("expired", "the Google sign-in timed out or was started elsewhere; try again");
+      if (typeof query.code !== "string")
+        throw new GoogleRefusal("cancelled", "Google sign-in was cancelled");
+      // The first account must come through setup and its token, or nobody could ever become an administrator.
+      if (countUsers(db) === 0)
+        throw new GoogleRefusal("setup", "printmax has no administrator yet");
+      const identity = identityFromIdToken(google, await exchangeCode(google, query.code, flow), flow.nonce);
+      startSession(db, req, reply, googleUser(db, identity).id);
+      return reply.redirect("/");
+    }
+    catch (err) {
+      if (!(err instanceof GoogleRefusal))
+        throw err;
+      req.log.info({ code: err.code }, `Google sign-in refused: ${err.message}`);
+      return reply.redirect(`/?google_error=${err.code}`);
+    }
   });
 }

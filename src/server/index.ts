@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     logger: true,
     setupToken,
     trustProxy: config.trustProxy,
+    google: config.google,
   });
 
   const worker = startJobWorker(db, {

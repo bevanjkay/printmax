@@ -192,6 +192,6 @@ export function App() {
   if (!auth)
     return <div className="auth" aria-busy="true" />;
   if (!auth.user)
-    return <LoginPage needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired ?? false} onSignedIn={user => setAuth({ user, needsSetup: false })} />;
-  return <Shell key={auth.user.id} user={auth.user} onSignedOut={() => setAuth({ user: null, needsSetup: false })} />;
+    return <LoginPage needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired ?? false} googleSignIn={auth.googleSignIn} onSignedIn={user => setAuth({ ...auth, user, needsSetup: false })} />;
+  return <Shell key={auth.user.id} user={auth.user} onSignedOut={() => setAuth({ ...auth, user: null, needsSetup: false })} />;
 }

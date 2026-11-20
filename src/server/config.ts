@@ -1,3 +1,4 @@
+import type { GoogleSignIn } from "./google.js";
 import path from "node:path";
 import process from "node:process";
 import { DEFAULT_MAX_OUTPUT_BYTES, DEFAULT_SECONDS_PER_PAGE } from "./ppd/ghostscript.js";
@@ -24,6 +25,7 @@ export interface Config {
   setupToken: string | null;
   /** Fastify's trustProxy: true behind a reverse proxy, false when clients reach the app directly, or a CIDR list. */
   trustProxy: boolean | string | string[];
+  google: GoogleSignIn | null;
 }
 
 function trustProxyFrom(raw: string | undefined): boolean | string | string[] {
@@ -32,6 +34,25 @@ function trustProxyFrom(raw: string | undefined): boolean | string | string[] {
   if (raw === undefined || raw === "" || raw === "false")
     return false;
   return raw.includes(",") ? raw.split(",").map(value => value.trim()).filter(Boolean) : raw;
+}
+
+/** All four settings or none: a half-configured sign-in should stop the server, not quietly vanish. */
+function googleFrom(env: NodeJS.ProcessEnv): GoogleSignIn | null {
+  const names = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ALLOWED_DOMAINS", "PUBLIC_URL"] as const;
+  const missing = names.filter(name => !env[name]);
+  if (missing.length === names.length)
+    return null;
+  if (missing.length > 0)
+    throw new TypeError(`Sign in with Google also needs ${missing.join(", ")}`);
+  const allowedDomains = env.GOOGLE_ALLOWED_DOMAINS!.split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+  if (allowedDomains.length === 0)
+    throw new TypeError("GOOGLE_ALLOWED_DOMAINS must list at least one domain");
+  return {
+    clientId: env.GOOGLE_CLIENT_ID!,
+    clientSecret: env.GOOGLE_CLIENT_SECRET!,
+    allowedDomains,
+    redirectUri: new URL("/api/auth/google/callback", env.PUBLIC_URL).toString(),
+  };
 }
 
 function int(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -63,5 +84,6 @@ export function loadConfig(env = process.env): Config {
     staticDir: path.resolve(env.STATIC_DIR ?? path.join(import.meta.dirname, "..", "client")),
     setupToken: env.SETUP_TOKEN || null,
     trustProxy: trustProxyFrom(env.TRUST_PROXY),
+    google: googleFrom(env),
   };
 }

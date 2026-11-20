@@ -6,6 +6,8 @@ export interface UserDto {
   name: string;
   role: "admin" | "user";
   createdAt: string;
+  /** False for an account that has only ever signed in with Google. */
+  hasPassword: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export interface AuthState {
   needsSetup: boolean;
   /** Setup needs the token printed in the server log (or SETUP_TOKEN). */
   setupTokenRequired?: boolean;
+  googleSignIn: boolean;
 }
 
 export interface PrinterSummary {
